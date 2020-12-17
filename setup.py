@@ -21,5 +21,7 @@ setup(name='telemetry-python',
             'opentelemetry-sdk==0.16b1',
             'opentelemetry-instrumentation-sqlalchemy==0.16b1',
             'opentelemetry-instrumentation-wsgi==0.16b1',
-      ]
+            'pytest'
+      ],
+      entry_points={"pytest11": ["telemetry = telemetry.testing.pytest_plugin"]},
 )

@@ -41,6 +41,7 @@ class GaugeInfo:
     count: int
     tags: Dict[str, str] = field(default_factory=dict)
 
+
 class TelemetryFixture(Telemetry):
     def __init__(self):
         span_tracker = SynchronousSpanTracker()
@@ -108,11 +109,13 @@ class TelemetryFixture(Telemetry):
     def get_metrics(self,
                     type_filter: Callable[[Type], bool] = lambda v: True,
                     name_filter: Callable[[str], bool] = lambda v: True,
-                    tag_filter: Callable[[Dict[str, str]], bool] = lambda v: True) -> List[Union[CounterInfo, ValueRecorderInfo]]:
+                    tag_filter: Callable[[Dict[str, str]], bool] = lambda v: True) -> List[
+        Union[CounterInfo, ValueRecorderInfo]]:
         metrics = []
         for metric in self.metrics_exporter.get_exported_metrics():
             m: ExportRecord = metric
-            if not type_filter(type(m.instrument)) or not name_filter(m.instrument.name) or not tag_filter(self._get_tags(m)):
+            if not type_filter(type(m.instrument)) or not name_filter(m.instrument.name) or not tag_filter(
+                    self._get_tags(m)):
                 continue
 
             if type(m.instrument) == Counter:
@@ -131,25 +134,27 @@ class TelemetryFixture(Telemetry):
         return metrics
 
     def get_counters(self, name_filter: Callable[[str], bool] = lambda v: True,
-                           tag_filter: Callable[[Dict[str, str]], bool] = lambda v: True) -> List[CounterInfo]:
+                     tag_filter: Callable[[Dict[str, str]], bool] = lambda v: True) -> List[CounterInfo]:
         return self.get_metrics(type_filter=lambda t: t == Counter, name_filter=name_filter, tag_filter=tag_filter)
 
     def get_finished_spans(self, name_filter: Callable[[str], bool] = lambda v: True,
-                                 attribute_filter: Callable[[Attributes], bool] = lambda v: True,
-                                 tag_filter: Callable[[Dict[str, str]], bool] = lambda v: True) -> List[Span]:
+                           attribute_filter: Callable[[Attributes], bool] = lambda v: True,
+                           tag_filter: Callable[[Dict[str, str]], bool] = lambda v: True) -> List[Span]:
         spans = []
 
         for span in self.span_exporter.get_finished_spans():
             wrapped_span = Span(span)
-            if not name_filter(f"{wrapped_span.qname}") or not attribute_filter(wrapped_span.attributes) or not tag_filter(wrapped_span.tags):
+            if not name_filter(f"{wrapped_span.qname}") or not attribute_filter(
+                    wrapped_span.attributes) or not tag_filter(wrapped_span.tags):
                 continue
             spans.append(wrapped_span)
 
         return spans
 
     def get_value_recorders(self, name_filter: Callable[[str], bool] = lambda v: True,
-                                  tag_filter: Callable[[Dict[str, str]], bool] = lambda v: True) -> List[ValueRecorderInfo]:
-        return self.get_metrics(type_filter=lambda t: t == ValueRecorder, name_filter=name_filter, tag_filter=tag_filter)
+                            tag_filter: Callable[[Dict[str, str]], bool] = lambda v: True) -> List[ValueRecorderInfo]:
+        return self.get_metrics(type_filter=lambda t: t == ValueRecorder, name_filter=name_filter,
+                                tag_filter=tag_filter)
 
     def get_counter(self, name: str, tags: Optional[Dict[str, str]] = None) -> Optional[CounterInfo]:
         m = self._find_metric(Counter, name, tags)
@@ -222,3 +227,4 @@ class JsonLogCaptureFormatter(JsonLogFormatter):
                 return
 
         pytest.fail(f"Assertion failed! Could not find expected text in logs: {text}")
+

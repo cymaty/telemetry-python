@@ -1,4 +1,4 @@
-from tests.fixture import TelemetryFixture
+from telemetry.testing import TelemetryFixture
 
 
 class TestEnvironment:

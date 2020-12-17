@@ -5,7 +5,7 @@ from opentelemetry.instrumentation.requests import RequestsInstrumentor
 
 import responses
 from telemetry import TelemetryMixin, trace
-from tests.fixture import TelemetryFixture
+from telemetry.testing import TelemetryFixture
 
 
 @trace
