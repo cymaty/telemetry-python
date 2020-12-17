@@ -154,7 +154,10 @@ class SpanKind(enum.Enum):
 
 
 class Span:
-    _ATTRIBUTE_NAME_PATTERN = re.compile('_*[a-zA-Z0-9_.]+')
+    _ATTRIBUTE_NAME_PATTERN = re.compile('_*[a-zA-Z0-9_.\-]+')
+
+    # used to track valid attribute keys so that we can skip validation after it's first seen
+    _attribute_key_cache = set()
 
     def __init__(self, span: trace_sdk.Span):
         assert isinstance(span, trace_sdk._Span), f'unexpected Span type: {type(span)}'
@@ -174,11 +177,19 @@ class Span:
         return self._span.instrumentation_info.name
 
     def set_attribute(self, name: str, value: AttributeValue) -> 'Span':
-        if not isinstance(name, str):
-            raise Exception(f"attribute/tag name must be a string! Instead we got {type(name)}")
-
-        if not self._ATTRIBUTE_NAME_PATTERN.fullmatch(name):
-            raise Exception(f"attribute/tag name must match the pattern: {self._ATTRIBUTE_NAME_PATTERN.pattern}")
+        # to boost performance, we track valid attribute names in this cache (shared across all instances).
+        # The first time an attribute key is seen, we'll validate it and then add it to the cache so that we can skip
+        # validation the next time we encounter it.
+        if name not in self._attribute_key_cache:
+            if not isinstance(name, str):
+                raise Exception(f"attribute/tag name must be a string! Instead we got {type(name)}")
+            elif not self._ATTRIBUTE_NAME_PATTERN.fullmatch(name):
+                raise Exception(f"attribute/tag name must match the pattern: {self._ATTRIBUTE_NAME_PATTERN.pattern}")
+            else:
+                if len(self._attribute_key_cache) > 1000:
+                    logging.warning("Over 1000 attribute names have been cached. This should be investigated and the"
+                                    "size warning should be increased if this is a valid use-case!")
+                self._attribute_key_cache.add(name)
 
         self._span.set_attribute(name, value)
         return self

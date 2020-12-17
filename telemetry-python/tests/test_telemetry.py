@@ -1,6 +1,7 @@
 import logging
 import time
 
+import pytest
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 
 import responses
@@ -208,6 +209,40 @@ class TestTelemetry:
         assert telemetry.get_value_recorder(name='category1.span1',
                                             tags={'env': 'test',
                                                   'span.status': 'OK'}).count == 1
+
+    def test_invalid_attributes(self, telemetry: TelemetryFixture):
+        invalid_names = [
+            '',
+            'invalid ',
+            '(invalid )',
+        ]
+
+        with telemetry.span('test', 'span1') as span:
+            for name in invalid_names:
+                with pytest.raises(Exception):
+                    span.set_attribute(name, "value")
+
+
+    def test_invalid_tags(self, telemetry: TelemetryFixture):
+        invalid_names = [
+            '',
+            'invalid ',
+            '(invalid )',
+        ]
+
+        with telemetry.span('test', 'span1') as span:
+            for name in invalid_names:
+                with pytest.raises(Exception):
+                    span.set_tag(name, "value")
+
+            with pytest.raises(Exception):
+                span.set_tag("foo", 1)
+
+            with pytest.raises(Exception):
+                span.set_tag("foo", 1.0)
+
+            with pytest.raises(Exception):
+                span.set_tag("foo", True)
 
 
 class TestMetrics:
