@@ -53,7 +53,7 @@ class trace(object):
             if hasattr(instance, 'telemetry_category'):
                 return getattr(instance, 'telemetry_category')
             else:
-                return instance.__class__.__qualname__
+                return f"{instance.__class__.__module__}.{instance.__class__.__name__}"
         else:
             return inspect.getmodule(fn).__name__
 
