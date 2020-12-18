@@ -85,32 +85,32 @@ class TestTracer:
         assert len(telemetry.get_counters()) == 7
 
         # method1 (direct)
-        assert telemetry.get_value_recorder('tests.example.ExampleClass.method1',
+        assert telemetry.get_value_recorder('tests.example.ExampleClass.method1.duration',
                                             tags={'span.status': 'OK', 'tag1': 'value1'}).count == 1
-        assert telemetry.get_value_recorder('tests.example.ExampleClass.method1',
+        assert telemetry.get_value_recorder('tests.example.ExampleClass.method1.duration',
                                             tags={'span.status': 'OK', 'tag1': 'value1'}).sum >= 100
-        assert telemetry.get_value_recorder('tests.example.ExampleClass.method1',
+        assert telemetry.get_value_recorder('tests.example.ExampleClass.method1.duration',
                                             tags={'span.status': 'OK', 'tag1': 'value1'}).min >= 100
-        assert telemetry.get_value_recorder('tests.example.ExampleClass.method1',
+        assert telemetry.get_value_recorder('tests.example.ExampleClass.method1.duration',
                                             tags={'span.status': 'OK', 'tag1': 'value1'}).max >= 100
 
         # method2 (direct)
-        assert telemetry.get_value_recorder('tests.example.ExampleClass.method2',
+        assert telemetry.get_value_recorder('tests.example.ExampleClass.method2.duration',
                                             tags={'span.status': 'OK', 'tag2': 'value2'}).count == 1
-        assert telemetry.get_value_recorder('tests.example.ExampleClass.method2',
+        assert telemetry.get_value_recorder('tests.example.ExampleClass.method2.duration',
                                             tags={'span.status': 'OK', 'tag2': 'value2'}).sum >= 100
-        assert telemetry.get_value_recorder('tests.example.ExampleClass.method2',
+        assert telemetry.get_value_recorder('tests.example.ExampleClass.method2.duration',
                                             tags={'span.status': 'OK', 'tag2': 'value2'}).min >= 100
-        assert telemetry.get_value_recorder('tests.example.ExampleClass.method2',
+        assert telemetry.get_value_recorder('tests.example.ExampleClass.method2.duration',
                                             tags={'span.status': 'OK', 'tag2': 'value2'}).max >= 100
         # assert telemetry.get_counter('ExampleClass.method2.errors', tags={'tag1': 'value1'}).value == 0
 
         # method2 (indirect)
-        assert telemetry.get_value_recorder('tests.example.ExampleClass.method2',
+        assert telemetry.get_value_recorder('tests.example.ExampleClass.method2.duration',
                                             tags={'span.status': 'OK', 'tag1': 'value1', 'tag2': 'value2'}).count == 1
 
         # error (direct)
-        assert telemetry.get_value_recorder('tests.example.ExampleClass.error',
+        assert telemetry.get_value_recorder('tests.example.ExampleClass.error.duration',
                                             tags={'span.status': 'ERROR'}).count == 1
 
         assert len(telemetry.get_value_recorders()) == 4
@@ -136,10 +136,10 @@ class TestTracer:
         telemetry.collect()
 
         assert example.telemetry_category == 'tests.example.ExampleClass'
-        assert telemetry.get_value_recorder(name='tests.example.ExampleClass.method1',
+        assert telemetry.get_value_recorder(name='tests.example.ExampleClass.method1.duration',
                                             tags={'span.status': 'OK', 'tag1': 'value1'}).count == 1
 
-        assert telemetry.get_value_recorder(name='tests.example.ExampleClass.method2',
+        assert telemetry.get_value_recorder(name='tests.example.ExampleClass.method2.duration',
                                             tags={'span.status': 'OK', 'tag1': 'value1', 'tag2': 'value2'}).count == 1
         assert len(telemetry.get_value_recorders()) == 2
 
@@ -175,7 +175,7 @@ class TestTracer:
 
         telemetry.collect()
 
-        assert telemetry.get_value_recorder(name='requests.HTTP GET',
+        assert telemetry.get_value_recorder(name='requests.HTTP GET.duration',
                                             tags={'span.status': 'ERROR',
                                                   'component': 'http',
                                                   'http.method': 'GET'}).count == 1
@@ -195,7 +195,7 @@ class TestTracer:
 
         telemetry.collect()
 
-        assert telemetry.get_value_recorder(name='category1.span1',
+        assert telemetry.get_value_recorder(name='category1.span1.duration',
                                             tags={'env': 'test',
                                                   'span.status': 'OK'}).count == 1
 

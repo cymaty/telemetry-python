@@ -2,6 +2,7 @@ import abc
 import logging
 import os
 import typing
+from contextlib import contextmanager
 from decimal import Decimal
 from enum import Enum
 from typing import Dict, Optional
@@ -123,10 +124,12 @@ class TelemetryApi:
     def __init__(self, category: str):
         self.category = category
 
+    @contextmanager
     def span(self, name: str, attributes: Optional[Attributes] = None, tags: Optional[Dict[str, str]] = None,
              kind: SpanKind = SpanKind.INTERNAL) -> Span:
         from telemetry import tracer
-        return tracer.span(self.category, name, attributes=attributes, tags=tags, kind=kind)
+        with tracer.span(self.category, name, attributes=attributes, tags=tags, kind=kind) as span:
+            yield span
 
     def counter(self, name: str, value: int = 1, tags: Dict[str, str] = {}, unit: str = "1", description: Optional[str] = None):
         from telemetry import metrics

@@ -108,7 +108,7 @@ class SpanTracker(trace_sdk.SpanProcessor):
 
         elapsed_ms = int((span.end_time - span.start_time) / 1000000)
         category = span.instrumentation_info.name.replace('opentelemetry.instrumentation.', '')
-        metric = self._telemetry.metrics._get_metric(category, f"{span.name}", int, metrics_sdk.ValueRecorder, unit="ms")
+        metric = self._telemetry.metrics._get_metric(category, f"{span.name}.duration", int, metrics_sdk.ValueRecorder, unit="ms")
 
         tags = wrapped_span.tags
 
