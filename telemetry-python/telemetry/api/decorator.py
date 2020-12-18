@@ -27,6 +27,8 @@ def extract_args(*args: str) -> Optional[AttributeExtractor]:
 
 @wrapt.decorator
 class trace(object):
+    extract_args = extract_args
+
     def __init__(self,
                  category: Optional[str] = None,
                  tags: Optional[Dict[str, str]] = None,
