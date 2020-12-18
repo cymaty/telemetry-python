@@ -81,14 +81,40 @@ class TestDecorator:
         assert telemetry.get_value_recorder(name='custom_category.method_trace_custom',
                                             tags={'arg1': 'arg1_value', 'tag1': 't1', 'span.status': 'OK'}).count == 1
 
-    def test_decorator_argument_tagging(self, telemetry: TelemetryFixture):
+    def test_decorator_argument_tagging(self, telemetry: TelemetryFixture, caplog):
+        telemetry.enable_log_record_capture(caplog)
+
         example = DecoratorExample()
         example.method_trace_custom('foo')
+        example.method_trace_custom('foo', 20)
+
+        telemetry.collect()
+
+        assert telemetry.get_value_recorder(name='custom_category.method_trace_custom',
+                                            tags={'arg1': 'foo', 'tag1': 't1', 'span.status': 'OK'}).count == 2
+
+        telemetry.caplog.get_record(lambda rec: rec['message'] == 'method_trace_custom log' and
+                                                rec['attributes'] == {'tag1': 't1', 'attribute1': 'a1', 'arg1': 'foo',
+                                                                      'arg2': 10, '_tag_keys': ('tag1', 'arg1')})
+
+        telemetry.caplog.get_record(lambda rec: rec['message'] == 'method_trace_custom log' and
+                                                rec['attributes'] == {'tag1': 't1', 'attribute1': 'a1', 'arg1': 'foo',
+                                                                      'arg2': 20, '_tag_keys': ('tag1', 'arg1')})
+
+
+    def test_decorator_argument_tagging_none(self, telemetry: TelemetryFixture, caplog):
+        telemetry.enable_log_record_capture(caplog)
+
+        example = DecoratorExample()
+        example.method_trace_custom(arg1='foo', arg2=None)
 
         telemetry.collect()
 
         assert telemetry.get_value_recorder(name='custom_category.method_trace_custom',
                                             tags={'arg1': 'foo', 'tag1': 't1', 'span.status': 'OK'}).count == 1
+
+        telemetry.caplog.get_record(lambda rec: rec['attributes'] == {'tag1': 't1', 'attribute1': 'a1', 'arg1': 'foo',
+                                                                      '_tag_keys': ('tag1', 'arg1')})
 
     def test_decorator_complex_argument_tag(self, telemetry: TelemetryFixture):
         example = DecoratorExample()

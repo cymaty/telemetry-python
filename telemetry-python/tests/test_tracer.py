@@ -199,7 +199,9 @@ class TestTracer:
                                             tags={'env': 'test',
                                                   'span.status': 'OK'}).count == 1
 
-    def test_invalid_attributes(self, telemetry: TelemetryFixture):
+    def test_invalid_attributes(self, telemetry: TelemetryFixture, caplog):
+        telemetry.enable_log_record_capture(caplog)
+
         invalid_names = [
             '',
             'invalid ',
@@ -208,10 +210,14 @@ class TestTracer:
 
         with telemetry.span('test', 'span1') as span:
             for name in invalid_names:
-                with pytest.raises(Exception):
-                    span.set_attribute(name, "value")
+                span.set_attribute(name, "value")
+                telemetry.caplog\
+                    .assert_log_contains(f"attribute/tag name must match the pattern: _*[a-zA-Z0-9_.\\-]+ (name={name})", 'WARNING')
 
-    def test_invalid_tags(self, telemetry: TelemetryFixture):
+
+    def test_invalid_tags(self, telemetry: TelemetryFixture, caplog):
+        telemetry.enable_log_record_capture(caplog)
+
         invalid_names = [
             '',
             'invalid ',
@@ -220,14 +226,19 @@ class TestTracer:
 
         with telemetry.span('test', 'span1') as span:
             for name in invalid_names:
-                with pytest.raises(Exception):
-                    span.set_tag(name, "value")
+                span.set_tag(name, "value")
+                telemetry.caplog.assert_log_contains(
+                    f"attribute/tag name must match the pattern: _*[a-zA-Z0-9_.\-]+ (name={name})", 'WARNING')
 
-            with pytest.raises(Exception):
-                span.set_tag("foo", 1)
+            span.set_tag("foo", 1)
+            telemetry.caplog.assert_log_contains(
+                f"Tag value for must be a string! (name=foo, value=1)", 'WARNING')
+            
+            span.set_tag("foo", 1.0)
+            telemetry.caplog.assert_log_contains(
+                f"Tag value for must be a string! (name=foo, value=1.0)", 'WARNING')
 
-            with pytest.raises(Exception):
-                span.set_tag("foo", 1.0)
+            span.set_tag("foo", True)
+            telemetry.caplog.assert_log_contains(
+                f"Tag value for must be a string! (name=foo, value=True)", 'WARNING')
 
-            with pytest.raises(Exception):
-                span.set_tag("foo", True)

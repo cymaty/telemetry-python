@@ -191,23 +191,27 @@ class Span:
         # validation the next time we encounter it.
         if name not in self._attribute_key_cache:
             if not isinstance(name, str):
-                raise Exception(f"attribute/tag name must be a string! Instead we got {type(name)}")
+                logging.warning(f"attribute/tag name must be a string! (name={name})")
             elif not self._ATTRIBUTE_NAME_PATTERN.fullmatch(name):
-                raise Exception(f"attribute/tag name must match the pattern: {self._ATTRIBUTE_NAME_PATTERN.pattern}")
+                logging.warning(f"attribute/tag name must match the pattern: {self._ATTRIBUTE_NAME_PATTERN.pattern} (name={name})")
             else:
                 if len(self._attribute_key_cache) > 1000:
                     logging.warning("Over 1000 attribute names have been cached. This should be investigated and the"
                                     "size warning should be increased if this is a valid use-case!")
                 self._attribute_key_cache.add(name)
 
-        self._span.set_attribute(name, value)
+        if value is not None:
+            self._span.set_attribute(name, value)
+            
         return self
 
     def set_tag(self, name: str, value: str) -> 'Span':
         if not isinstance(value, str):
-            raise Exception(f"Tag value must be a string! Instead we got {type(value)}")
-        self.set_attribute(name, value)
-        self.add_attribute_tags(name)
+            logging.warning(f"Tag value for must be a string! (name={name}, value={value})")
+        else:
+            self.set_attribute(name, value)
+            self.add_attribute_tags(name)
+            
         return self
 
     def add_attribute_tags(self, *names: str):
