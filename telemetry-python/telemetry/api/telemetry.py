@@ -124,12 +124,16 @@ class TelemetryApi:
     def __init__(self, category: str):
         self.category = category
 
-    @contextmanager
     def span(self, name: str, attributes: Optional[Attributes] = None, tags: Optional[Dict[str, str]] = None,
-             kind: SpanKind = SpanKind.INTERNAL) -> Span:
+             kind: SpanKind = SpanKind.INTERNAL) -> typing.ContextManager[Span]:
         from telemetry import tracer
-        with tracer.span(self.category, name, attributes=attributes, tags=tags, kind=kind) as span:
-            yield span
+        
+        @contextmanager
+        def wrapper():
+            with tracer.span(self.category, name, attributes=attributes, tags=tags, kind=kind) as span:
+                yield span
+
+        return wrapper()
 
     def counter(self, name: str, value: int = 1, tags: Dict[str, str] = {}, unit: str = "1", description: Optional[str] = None):
         from telemetry import metrics

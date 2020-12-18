@@ -4,7 +4,7 @@ import threading
 import re
 from contextlib import contextmanager
 from threading import RLock
-from typing import Dict, Optional, List, Callable, Union, Sequence, Mapping
+from typing import Dict, Optional, List, Callable, Union, Sequence, Mapping, ContextManager
 
 import opentelemetry.sdk.metrics as metrics_sdk
 import opentelemetry.sdk.trace as trace_sdk
@@ -334,23 +334,31 @@ class Tracer:
 
         return Span(trace_api.get_current_span())
 
-    @contextmanager
-    def span(self, category: str, name: str, attributes: Optional[Attributes] = None,
+    def span(self, category: str,
+             name: str,
+             attributes: Optional[Attributes] = None,
              tags: Optional[Dict[str, str]] = None,
-             kind: SpanKind = SpanKind.INTERNAL) -> Span:
+             kind: SpanKind = SpanKind.INTERNAL) -> ContextManager[Span]:
 
         from opentelemetry import trace
 
-        if attributes is None:
-            attributes = {}
+        @contextmanager
+        def wrapper():
+            nonlocal name, attributes, kind, tags
 
-        tracer = trace.get_tracer(category, tracer_provider=self._tracer_provider)
+            if attributes is None:
+                attributes = {}
 
-        with tracer.start_as_current_span(name=name,
-                                          attributes=attributes,
-                                          kind=SpanKind.to_ot_span_kind(kind)) as span:
-            wrapped_span = Span(span)
-            if tags:
-                for name, value in tags.items():
-                    wrapped_span.set_tag(name, value)
-            yield wrapped_span
+
+            tracer = trace.get_tracer(category, tracer_provider=self._tracer_provider)
+
+            with tracer.start_as_current_span(name=name,
+                                              attributes=attributes,
+                                              kind=SpanKind.to_ot_span_kind(kind)) as span:
+                wrapped_span = Span(span)
+                if tags:
+                    for name, value in tags.items():
+                        wrapped_span.set_tag(name, value)
+                yield wrapped_span
+
+        return wrapper()

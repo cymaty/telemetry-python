@@ -1,4 +1,5 @@
 from threading import RLock
+from typing import ContextManager
 
 import wrapt
 from decorator import contextmanager
@@ -36,8 +37,7 @@ def set_telemetry(instance: Telemetry):
         metrics.__wrapped__ = instance.metrics
         instance.register()
 
-@contextmanager
-def with_telemetry(telemetry: Telemetry) -> Telemetry:
+def with_telemetry(telemetry: Telemetry) -> ContextManager[Telemetry]:
     """
     UNIT TEST ONLY!
 
@@ -48,10 +48,15 @@ def with_telemetry(telemetry: Telemetry) -> Telemetry:
     :param instance: new Telemetry instance
     :return: new Telemetry instance
     """
-    previous = get_telemetry()
-    set_telemetry(telemetry)
-    yield telemetry
-    set_telemetry(previous)
+
+    @contextmanager
+    def wrapper():
+        previous = get_telemetry()
+        set_telemetry(telemetry)
+        yield telemetry
+        set_telemetry(previous)
+
+    return wrapper()
 
 
 def initialize_json_logger():
