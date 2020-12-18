@@ -10,10 +10,9 @@ from opentelemetry import metrics as metrics_api, trace as trace_api
 from opentelemetry.sdk.metrics import MetricsExporter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleExportSpanProcessor, SpanExporter
-from opentelemetry.util.types import Attributes
 
 from telemetry.api.metrics import Metrics, Observer
-from telemetry.api.trace import Tracer, SpanKind, Span, SynchronousSpanTracker, SpanListener
+from telemetry.api.trace import Tracer, SpanKind, Span, SynchronousSpanTracker, SpanListener, Attributes, AttributeValue
 
 
 def _repo_url():
@@ -103,10 +102,15 @@ class Telemetry(abc.ABC):
                 description: Optional[str] = None):
         self.metrics.counter(category, name, value=value, tags=tags, unit=unit, description=description)
 
-    def record(self, category: str, name: str, value: typing.Union[int, float] = 1, tags: Dict[str, str] = {},
-               unit: str = "1",
-               description: Optional[str] = None):
-        self.metrics.record(category, name, value=value, tags=tags, unit=unit, description=description)
+    def up_down_counter(self, category: str, name: str, value: typing.Union[int, float] = 1, tags: Dict[str, str] = {},
+                unit: str = "1",
+                description: Optional[str] = None):
+        self.metrics.up_down_counter(category, name, value=value, tags=tags, unit=unit, description=description)
+
+    def record_value(self, category: str, name: str, value: typing.Union[int, float] = 1, tags: Dict[str, str] = {},
+                     unit: str = "1",
+                     description: Optional[str] = None):
+        self.metrics.record_value(category, name, value=value, tags=tags, unit=unit, description=description)
 
     def gauge(self, category: str, name: str, callback: typing.Callable[[Observer], None],
               unit: str = "1",
@@ -119,17 +123,23 @@ class TelemetryApi:
     def __init__(self, category: str):
         self.category = category
 
+    def span(self, name: str, attributes: Optional[Attributes] = None, tags: Optional[Dict[str, str]] = None,
+             kind: SpanKind = SpanKind.INTERNAL) -> Span:
+        from telemetry import tracer
+        return tracer.span(self.category, name, attributes=attributes, tags=tags, kind=kind)
+
     def counter(self, name: str, value: int = 1, tags: Dict[str, str] = {}, unit: str = "1", description: Optional[str] = None):
         from telemetry import metrics
         metrics.counter(self.category, name, value=value, tags=tags, unit=unit, description=description)
 
-    def span(self, name: str, attributes: Optional[Attributes] = None, tags: Optional[Dict[str, str]] = None, kind: SpanKind = SpanKind.INTERNAL) -> Span:
-        from telemetry import tracer
-        return tracer.span(self.category, name, attributes=attributes, tags=tags, kind=kind)
-
-    def record(self, name: str, value: int = 1, tags: Dict[str, str] = {}, unit: str = "1", description: Optional[str] = None):
+    def up_down_counter(self, name: str, value: int = 1, tags: Dict[str, str] = {}, unit: str = "1",
+                description: Optional[str] = None):
         from telemetry import metrics
-        metrics.record(self.category, name, value=value, tags=tags, unit=unit, description=description)
+        metrics.up_down_counter(self.category, name, value=value, tags=tags, unit=unit, description=description)
+
+    def record_value(self, name: str, value: int = 1, tags: Dict[str, str] = {}, unit: str = "1", description: Optional[str] = None):
+        from telemetry import metrics
+        metrics.record_value(self.category, name, value=value, tags=tags, unit=unit, description=description)
 
     def gauge(self, name: str, callback: typing.Callable[[Observer], None], unit: str = "1", description: Optional[str] = None):
         from telemetry import metrics
@@ -141,7 +151,7 @@ class TelemetryMixin(object):
 
     def __init_subclass__(cls, **kwargs):
         if cls.telemetry_category is None:
-            cls.telemetry_category = cls.__name__
+            cls.telemetry_category = f"{cls.__module__}.{cls.__name__}"
 
     @property
     def telemetry(self) -> TelemetryApi:

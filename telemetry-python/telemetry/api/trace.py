@@ -4,7 +4,7 @@ import threading
 import re
 from contextlib import contextmanager
 from threading import RLock
-from typing import Dict, Optional, List, Callable
+from typing import Dict, Optional, List, Callable, Union, Sequence, Mapping
 
 import opentelemetry.sdk.metrics as metrics_sdk
 import opentelemetry.sdk.trace as trace_sdk
@@ -12,7 +12,18 @@ import opentelemetry.trace as trace_api
 from opentelemetry import context as context_api
 from opentelemetry.trace import SpanKind as OTSpanKind, Status
 from opentelemetry.trace.status import StatusCode
-from opentelemetry.util.types import Attributes, AttributeValue
+
+AttributeValue = Union[
+    str,
+    bool,
+    int,
+    float,
+    Sequence[Union[None, str]],
+    Sequence[Union[None, bool]],
+    Sequence[Union[None, int]],
+    Sequence[Union[None, float]],
+]
+Attributes = Optional[Mapping[str, AttributeValue]]
 
 
 class SpanListener:
@@ -102,8 +113,6 @@ class SpanTracker(trace_sdk.SpanProcessor):
         tags = wrapped_span.tags
 
         metric.record(elapsed_ms, labels=tags)
-        # if not span.status.is_ok:
-        #     errors.add(1, tags)
 
         with self._lock:
             if span.get_span_context().span_id not in self._active_spans:
@@ -154,7 +163,7 @@ class SpanKind(enum.Enum):
 
 
 class Span:
-    _ATTRIBUTE_NAME_PATTERN = re.compile('_*[a-zA-Z0-9_.\-]+')
+    _ATTRIBUTE_NAME_PATTERN = re.compile('_*[a-zA-Z0-9_.\\-]+')
 
     # used to track valid attribute keys so that we can skip validation after it's first seen
     _attribute_key_cache = set()

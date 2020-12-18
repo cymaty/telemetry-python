@@ -4,14 +4,14 @@ from typing import Callable, Iterator, Dict, Optional, List, Type, Union
 
 import pytest
 from _pytest.logging import LogCaptureFixture
-from opentelemetry.sdk.metrics import PushController, Counter, ValueRecorder, ValueObserver
+from opentelemetry.sdk.metrics import PushController, Counter, ValueRecorder, ValueObserver, UpDownCounter
 from opentelemetry.sdk.metrics.export import ExportRecord
 from opentelemetry.sdk.metrics.export.in_memory_metrics_exporter import InMemoryMetricsExporter
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.util.types import Attributes
 
 from telemetry import Telemetry, SynchronousSpanTracker, Span
 from telemetry.api.logger.json import JsonLogFormatter
+from telemetry.api.trace import Attributes
 
 
 @dataclass
@@ -163,6 +163,13 @@ class TelemetryFixture(Telemetry):
         else:
             return None
 
+    def get_up_down_counter(self, name: str, tags: Optional[Dict[str, str]] = None) -> Optional[CounterInfo]:
+        m = self._find_metric(UpDownCounter, name, tags)
+        if m:
+            return CounterInfo(m.instrument.name, m.aggregator.checkpoint, self._get_tags(m))
+        else:
+            return None
+        
     def get_value_recorder(self, name: str, tags: Optional[Dict[str, str]] = None) -> Optional[ValueRecorderInfo]:
         m = self._find_metric(ValueRecorder, name, tags)
         if m:

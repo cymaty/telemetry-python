@@ -1,7 +1,8 @@
-from typing import Optional, Dict, Type, TypeVar, List, Set, Callable, Union
+import logging
+from typing import Optional, Dict, Type, TypeVar, Callable, Union
 
-from opentelemetry.metrics import ValueRecorder, Metric, ValueT, Meter, MeterProvider
 import opentelemetry.sdk.metrics as metrics_sdk
+from opentelemetry.metrics import Metric, ValueT
 
 from telemetry.api.otel.meter_provider import ManagedMeterProvider
 
@@ -34,7 +35,9 @@ class Metrics:
 
     def _metric_name(self, category: str, name: str):
         if category is None:
-            raise Exception('Metric category is not set!')
+            from telemetry.api.telemetry import _repo_url
+            logging.warning(f"Metric category is not set for metric '{name}'!  Please report this as a bug to {_repo_url}")
+            return name
 
         return f"{category}.{name}"
 
@@ -101,10 +104,17 @@ class Metrics:
         self._get_metric(category, name, type(value), metrics_sdk.Counter, unit, description)\
             .add(value, self._merge_tags(tags))
 
-    def record(self, category: str, name: str, value: Union[int, float],
-               tags: Dict[str, str] = {},
-               unit: str = "1",
-               description: Optional[str] = None):
+    def up_down_counter(self, category: str, name: str, value: Union[int, float] = 1, tags: Dict[str, str] = {},
+                unit: str = "1",
+                description: Optional[str] = None):
+        self._get_metric(category, name, type(value), metrics_sdk.UpDownCounter, unit, description) \
+            .add(value, self._merge_tags(tags))
+
+
+    def record_value(self, category: str, name: str, value: Union[int, float],
+                     tags: Dict[str, str] = {},
+                     unit: str = "1",
+                     description: Optional[str] = None):
         self._get_metric(category, name, type(value), metrics_sdk.ValueRecorder, unit,description)\
             .record(value, self._merge_tags(tags))
 

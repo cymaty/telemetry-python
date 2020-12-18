@@ -4,10 +4,10 @@ import wrapt
 from decorator import contextmanager
 
 from telemetry.api import Telemetry, TelemetryMixin
-from telemetry.api.decorator import trace
+from telemetry.api.decorator import trace, extract_args
 from telemetry.api.metrics import Metrics
 from telemetry.api.trace import Tracer, SpanKind, Span, SynchronousSpanTracker, SpanTracker, \
-    ConcurrentSpanTracker
+    ConcurrentSpanTracker, Attributes, AttributeValue
 
 telemetry: Telemetry = wrapt.ObjectProxy(Telemetry())
 tracer: Tracer = wrapt.ObjectProxy(telemetry.tracer)
