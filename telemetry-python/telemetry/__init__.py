@@ -54,6 +54,19 @@ def with_telemetry(telemetry: Telemetry) -> Telemetry:
     set_telemetry(previous)
 
 
+def initialize_json_logger():
+    """
+    Registers the Json log formmater which with telemetry-aware logging that will include current attributes/tags in
+    each log message.
+    :return: None
+    """
+    import logging
+    from telemetry.api.logger.json import JsonLogFormatter
+    
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers:
+        handler.setFormatter(JsonLogFormatter())
+
 
 
 
