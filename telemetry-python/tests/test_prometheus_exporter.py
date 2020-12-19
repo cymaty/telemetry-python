@@ -18,7 +18,7 @@ class TestPrometheusExporter:
         telemetry.collect()
 
         # wait for Prometheus collection interval to pass (METRICS_INTERVAL)
-        time.sleep(1)
+        time.sleep(2)
         
         http = urllib3.PoolManager()
         response = http.request('GET', 'http://localhost:9102/metrics')
