@@ -129,3 +129,6 @@ class Metrics:
             callback(Observer(o))
 
         self._register_observer(category, name, observer_callback, float, metrics_sdk.ValueObserver, unit, description)
+
+    def shutdown(self):
+        self._meter_provider.shutdown()

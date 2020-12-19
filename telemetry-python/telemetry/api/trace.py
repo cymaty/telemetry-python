@@ -362,3 +362,6 @@ class Tracer:
                 yield wrapped_span
 
         return wrapper()
+
+    def shutdown(self):
+        self._tracer_provider.shutdown()

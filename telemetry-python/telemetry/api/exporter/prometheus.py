@@ -5,8 +5,8 @@ from opentelemetry.exporter.prometheus import PrometheusMetricsExporter as OTPro
 
 class PrometheusMetricsExporter(OTPrometheusMetricsExporter):
     def __init__(self,
-                 bind_address: str = os.environ.get('METRICS_BIND_ADDRESS', 'localhost:9091'),
-                 prefix: str = os.environ.get('METRICS_PREFIX', '')):
+                 bind_address: str = os.environ.get('METRICS_PROMETHEUS_BIND_ADDRESS', '0.0.0.0:9102'),
+                 prefix: str = os.environ.get('METRICS_PROMETHEUS_PREFIX', '')):
         from prometheus_client import start_http_server
 
         if ':' not in bind_address:
@@ -21,4 +21,7 @@ class PrometheusMetricsExporter(OTPrometheusMetricsExporter):
         super().__init__(prefix)
 
     def __str__(self):
+        return f"Prometheus [bind_address={self.bind_address}, prefix={self.prefix}]"
+
+    def __repr__(self):
         return f"Prometheus [bind_address={self.bind_address}, prefix={self.prefix}]"

@@ -54,7 +54,7 @@ class Telemetry(abc.ABC):
 
         self.environment = Environment()
 
-        metric_exporters = (os.environ.get('METRICS_EXPORT') or '').lower()
+        metric_exporters = (os.environ.get('METRICS_EXPORTERS') or '').lower()
         if 'prometheus' in metric_exporters:
             try:
                 from telemetry.api.exporter.prometheus import PrometheusMetricsExporter
@@ -67,6 +67,10 @@ class Telemetry(abc.ABC):
             self.add_span_exporter(ConsoleSpanExporter())
 
         self.register()
+
+    def shutdown(self):
+        self.tracer.shutdown()
+        self.metrics.shutdown()
 
     def add_metrics_exporter(self, metrics_exporter: MetricsExporter,
                              interval: int = int(os.environ.get('METRICS_INTERVAL', '10'))):
