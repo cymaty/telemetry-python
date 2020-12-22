@@ -11,11 +11,7 @@ class InstrumentorSpanListener(SpanListener):
         self.delegate = delegate
 
     def enabled(self, span: Span) -> bool:
-        for instrumentor in self.instrumentors:
-            if span.instrumentor in [f"opentelemetry.instrumentation.{instrumentor}", span.instrumentor == instrumentor]:
-                return True
-            
-        return False
+        return span.instrumentor in self.instrumentors
 
     def on_start(self, span: Span):
         self.delegate.on_start(span)
@@ -24,7 +20,10 @@ class InstrumentorSpanListener(SpanListener):
         self.delegate.on_end(span)
 
 
-class AttributeTagMarker(SpanListener):
+class TagAttributes(SpanListener):
+    """
+    Will mark specified span attributes as metrics tags
+    """
     def __init__(self, *attributes: str):
         self.attributes = attributes
 
