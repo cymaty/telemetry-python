@@ -29,4 +29,4 @@ class AttributeTagMarker(SpanListener):
         self.attributes = attributes
 
     def on_start(self, span: Span):
-        span.add_attribute_tags(*self.attributes)
+        span._add_attribute_tags(*self.attributes)

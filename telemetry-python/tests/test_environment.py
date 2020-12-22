@@ -21,8 +21,10 @@ class TestEnvironment:
                                                 attribute_filter=lambda a: a.get('attrib1') == 'attrib1_value' and
                                                                            a.get('attrib2') == 'attrib2_value')) == 1
 
-        assert telemetry.get_value_recorder('category1.span1.duration', tags={'span.status': 'OK', 'tag1': 'tag1_value',
-                                                                     'tag2': 'tag2_value'}).count == 1
+        assert telemetry.get_value_recorder('trace.span.duration', tags={'trace.span_category': 'category1',
+                                                                         'trace.span_name': 'category1.span1',
+                                                                         'trace.span_status': 'OK', 'tag1': 'tag1_value',
+                                                                         'tag2': 'tag2_value'}).count == 1
 
     def test_tagger_no_override(self, monkeypatch, telemetry: TelemetryFixture):
         monkeypatch.setenv('METRICS_TAG_TAG1', 'tag1_value')
@@ -46,9 +48,9 @@ class TestEnvironment:
                                                 attribute_filter=lambda a: a.get('attrib1') == 'attrib1_value' and
                                                                            a.get('attrib2') == 'attrib2_value')) == 1
 
-        assert telemetry.get_value_recorder('category1.span1.duration',
-                                            tags={'span.status': 'OK', 'tag1': 'tag1_value',
-                                                  'tag2': 'tag2_override'}).count == 1
+        assert telemetry.get_value_recorder('trace.span.duration',
+                                            tags={'trace.span_category': 'category1', 'trace.span_name': 'category1.span1',
+                                                  'trace.span_status': 'OK', 'tag1': 'tag1_value', 'tag2': 'tag2_override'}).count == 1
 
     def test_tagger_empty(self, monkeypatch, telemetry: TelemetryFixture):
         # need to initialize again after environment is updated
@@ -59,7 +61,9 @@ class TestEnvironment:
 
         telemetry.collect()
 
-        assert telemetry.get_value_recorder('category1.span1.duration', tags={'span.status': 'OK'}).count == 1
+        assert telemetry.get_value_recorder('trace.span.duration', tags={'trace.span_category': 'category1',
+                                                                         'trace.span_name': 'category1.span1',
+                                                                         'trace.span_status': 'OK'}).count == 1
 
 
     def test_metrics_tagged_without_span(self, monkeypatch, telemetry: TelemetryFixture):

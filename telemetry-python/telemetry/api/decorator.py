@@ -1,3 +1,4 @@
+import functools
 import inspect
 import logging
 import typing
@@ -25,9 +26,78 @@ def extract_args(*args: str) -> Optional[AttributeExtractor]:
     return extract
 
 
+class TracedInvocation:
+    def __init__(self, owner, target):
+        self.owner = owner
+        self.target = target
+        self.arg_values = None
+        
+    def resolve_arguments(self, *args, **kwargs) -> Dict[str, any]:
+
+        if not self.arg_values is None:
+            return self.arg_values
+
+        import inspect
+
+        # initialize with explicitly-passed kwargs
+        arg_values = kwargs.copy()
+
+        # resolve the function signature (if not yet resolved)
+        if self.owner.signature is None:
+            self.owner.signature = inspect.signature(self.target)
+
+
+        def set_arg_value(name: str, value: any):
+            # if None value, then set to predefined value of 'none_value'
+            if value is None or value is inspect.Parameter.empty:
+                arg_values[name] = None
+                return
+
+            # if value is an enum, then extract the name
+            if isinstance(value, Enum):
+                value = value.name
+
+            arg_values[name] = value
+
+
+        for i, (name, param) in enumerate(self.owner.signature.parameters.items()):
+            if name == 'self' or name in arg_values:
+                continue
+
+            # we have positional argument
+            if i < len(args):
+                set_arg_value(name, args[i])
+            else:
+                if param.default:
+                    set_arg_value(name, param.default)
+
+        self.arg_values = arg_values
+
+        return arg_values
+
+
+    def wrap_span_attributes(self, fn, decorator_name: str, setter: typing.Callable[[str, any], None], static: Optional[dict], extractor: Optional[AttributeExtractor]):
+        def wrapped(*args, **kwargs):
+            if static:
+                for name, value in static.items():
+                    setter(name, value)
+
+            if extractor:
+                try:
+                    extracted = extractor(self.resolve_arguments(*args, **kwargs), self.target)
+                    if extracted:
+                        for name, value in extracted.items():
+                            setter(name, value)
+                except BaseException as ex:
+                    logging.warning(
+                        f"{decorator_name} decorator for {self.target.__qualname__} threw an exception during tag extraction! {ex}")
+
+            return fn(*args, **kwargs)
+
+        return wrapped
+
 @wrapt.decorator
 class trace(object):
-    none_value = None
     extract_args = extract_args
 
     def __init__(self,
@@ -57,41 +127,6 @@ class trace(object):
         else:
             return inspect.getmodule(fn).__name__
 
-    def _extract_arg_values(self, args, kwargs, fn):
-        import inspect
-
-        # initialize with explicitly-passed kwargs
-        arg_values = kwargs.copy()
-
-        # resolve the function signature (if not yet resolved)
-        if self.signature is None:
-            self.signature = inspect.signature(fn)
-
-        def set_arg_value(name: str, value: any):
-            # if None value, then set to predefined value of 'none_value'
-            if value is None or value is inspect.Parameter.empty:
-                arg_values[name] = self.none_value
-                return
-
-            # if value is an enum, then extract the name
-            if isinstance(value, Enum):
-                value = value.name
-
-            arg_values[name] = value
-
-        for i, (name, param) in enumerate(self.signature.parameters.items()):
-            if name == 'self' or name in arg_values:
-                continue
-
-            # we have positional argument
-            if i < len(args):
-                set_arg_value(name, args[i])
-            else:
-                if param.default:
-                    set_arg_value(name, param.default)
-
-        return arg_values
-
     def __call__(self, fn, instance, args, kwargs):
         from telemetry import telemetry
 
@@ -99,36 +134,9 @@ class trace(object):
             self.signature = inspect.signature(fn)
 
         with telemetry.tracer.span(self._get_category(fn, instance), fn.__name__) as span:
-            if self.tags:
-                for k, v in self.tags.items():
-                    span.set_tag(k, v)
-            if self.attributes:
-                for k, v in self.attributes.items():
-                    span.set_attribute(k, v)
+            invocation = TracedInvocation(self, fn)
+            wrapped_attributes = invocation.wrap_span_attributes(fn, "@trace", span.set_attribute, self.attributes, self.attribute_extractor)
+            wrapped_tags = invocation.wrap_span_attributes(wrapped_attributes, "@trace", span.set_tag, self.tags, self.tag_extractor)
+            return wrapped_tags(*args, **kwargs)
 
-            # optimization that checks whether we should extract argument
-            if self.attribute_extractor or self.tag_extractor:
-                # extract argument values
-                arg_values = self._extract_arg_values(args, kwargs, fn)
-                if self.tag_extractor:
-                    try:
-                        extracted = self.tag_extractor(arg_values, fn)
-                        if extracted:
-                            for name, value in extracted.items():
-                                span.set_tag(name, value)
-                    except BaseException as ex:
-                        logging.warning(
-                            f"@trace decorator for {fn.__qualname__} threw and exception during tag extraction! {ex}")
-
-                if self.attribute_extractor:
-                    try:
-                        extracted = self.attribute_extractor(arg_values, fn)
-                        if extracted:
-                            for name, value in extracted.items():
-                                span.set_attribute(name, value)
-                    except BaseException as ex:
-                        logging.warning(
-                            f"@trace decorator for {fn.__qualname__} threw and exception during attribute extraction! {ex}")
-
-            return fn(*args, **kwargs)
 

@@ -89,6 +89,10 @@ class SpanTracker(trace_sdk.SpanProcessor):
         for name, value in self.telemetry.environment.tags.items():
             wrapped_span.set_tag(name, value)
 
+        instrumentor = span.instrumentation_info.name.replace('opentelemetry.instrumentation.', '')
+        wrapped_span.set_tag("trace.span_category", instrumentor)
+        wrapped_span.set_tag("trace.span_name", wrapped_span.qname)
+
         super().on_start(span, parent_context)
 
         for span_listener in self._span_listeners:
@@ -107,13 +111,18 @@ class SpanTracker(trace_sdk.SpanProcessor):
         super().on_end(span)
 
         elapsed_ms = int((span.end_time - span.start_time) / 1000000)
-        category = span.instrumentation_info.name.replace('opentelemetry.instrumentation.', '')
-        metric = self._telemetry.metrics._get_metric(category, f"{span.name}.duration", int, metrics_sdk.ValueRecorder, unit="ms")
+
+
+        metric = self._telemetry.metrics._get_metric("trace", f"span.duration", int, metrics_sdk.ValueRecorder, unit="ms")
 
         tags = wrapped_span.tags
 
         metric.record(elapsed_ms, labels=tags)
 
+        if span.status.status_code == StatusCode.ERROR:
+            error_counter = self._telemetry.metrics._get_metric("trace", f"span.errors", int, metrics_sdk.Counter)
+            error_counter.add(1, labels=tags)
+            
         with self._lock:
             if span.get_span_context().span_id not in self._active_spans:
                 logging.warning(f"Existing span could not be cleaned up: {span.context.span_id}")
@@ -128,6 +137,17 @@ class SynchronousSpanTracker(SpanTracker, trace_sdk.SynchronousMultiSpanProcesso
 class ConcurrentSpanTracker(SpanTracker, trace_sdk.ConcurrentMultiSpanProcessor):
     pass
 
+
+class SpanContext:
+    def __init__(self, trace_id: str, span_id: str, trace_state: Dict[str, str]):
+        self.trace_id = trace_id
+        self.span_id = span_id
+        self.trace_state = trace_state
+
+class SpanStatus(enum.Enum):
+    OK = 0
+    UNSET = 1
+    ERROR = 2
 
 class SpanKind(enum.Enum):
     """Specifies additional details on how this span relates to its parent span.
@@ -170,20 +190,38 @@ class Span:
 
     def __init__(self, span: trace_sdk.Span):
         assert isinstance(span, trace_sdk._Span), f'unexpected Span type: {type(span)}'
-
+        self._instrumentor_name = span.instrumentation_info.name.replace('opentelemetry.instrumentation.', '')
         self._span = span
 
+    @property
+    def context(self) -> SpanContext:
+
+        return SpanContext(
+            str(self._span.context.trace_id),
+            str(self._span.context.span_id),
+            self._span.context.trace_state
+        )
+
+    @property
+    def status(self) -> SpanStatus:
+        if self._span.status.is_unset:
+            return SpanStatus.UNSET
+        elif self._span.status.is_ok:
+            return SpanStatus.OK
+        else:
+            return SpanStatus.ERROR
+            
     @property
     def name(self) -> str:
         return self._span.name
 
     @property
     def qname(self) -> str:
-        return f"{self.instrumentor}.{self.name}"
+        return f"{self._instrumentor_name}.{self.name}"
 
     @property
     def instrumentor(self) -> str:
-        return self._span.instrumentation_info.name
+        return self._instrumentor_name
 
     def set_attribute(self, name: str, value: AttributeValue) -> 'Span':
         # to boost performance, we track valid attribute names in this cache (shared across all instances).
@@ -210,18 +248,9 @@ class Span:
             logging.warning(f"Tag value for must be a string! (name={name}, value={value})")
         else:
             self.set_attribute(name, value)
-            self.add_attribute_tags(name)
+            self._add_attribute_tags(name)
             
         return self
-
-    def add_attribute_tags(self, *names: str):
-        from telemetry.api import _TAG_ATTRIBUTES_KEY
-        tag_attributes = list(self.attributes.get(_TAG_ATTRIBUTES_KEY, ()))
-
-        for name in names:
-            if name not in tag_attributes:
-                tag_attributes.append(name)
-        self.set_attribute(_TAG_ATTRIBUTES_KEY, tag_attributes)
 
     def add_event(self, name: str, attributes: Attributes) -> 'Span':
         self._span.add_event(name, attributes)
@@ -236,10 +265,14 @@ class Span:
         for key, value in (self._span.attributes or {}).items():
             attributes[key] = value
 
+        attributes['trace.id'] = str(self._span.context.trace_id)
+        attributes['trace.span_id'] = str(self._span.context.span_id)
+        attributes['trace.is_remote'] = self._span.context.is_remote
+
         if not self._span.status.is_unset:
-            attributes['span.status'] = self._span.status.status_code.name
-            attributes['span.description'] = self._span.status.description
-            attributes['span.kind'] = self._span.kind.name
+            attributes['trace.span_status'] = self._span.status.status_code.name
+            attributes['trace.span_description'] = self._span.status.description
+            attributes['trace.span_kind'] = self._span.kind.name
 
         return attributes
 
@@ -249,7 +282,8 @@ class Span:
 
         tags = {}
         attributes_as_tags = set(self.attributes.get(_TAG_ATTRIBUTES_KEY, ()))
-        attributes_as_tags.add('span.status')
+        attributes_as_tags.add('trace.span_status')
+        attributes_as_tags.add('trace.span_name')
 
         for key in attributes_as_tags:
             if key in self.attributes:
@@ -260,6 +294,15 @@ class Span:
 
     def events(self):
         return self._span.events
+
+    def _add_attribute_tags(self, *names: str):
+        from telemetry.api import _TAG_ATTRIBUTES_KEY
+        tag_attributes = list(self.attributes.get(_TAG_ATTRIBUTES_KEY, ()))
+
+        for name in names:
+            if name not in tag_attributes:
+                tag_attributes.append(name)
+        self.set_attribute(_TAG_ATTRIBUTES_KEY, tag_attributes)
 
 
 class Tracer:

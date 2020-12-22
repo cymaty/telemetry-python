@@ -58,7 +58,7 @@ class Telemetry(abc.ABC):
         if 'prometheus' in metric_exporters:
             try:
                 from telemetry.api.exporter.prometheus import PrometheusMetricsExporter
-                self.add_metrics_exporter(PrometheusMetricsExporter())
+                self.add_metrics_exporter(PrometheusMetricsExporter(), int(os.environ.get('METRICS_INTERVAL', '10')))
             except Exception as ex:
                 logging.warning("Prometheus exporter already running, will use existing server")
 
@@ -92,7 +92,7 @@ class Telemetry(abc.ABC):
     def span(self, category: str, name: str,
              attributes: Optional[Attributes] = None,
              tags: Optional[Dict[str, str]] = None,
-             kind: SpanKind = SpanKind.INTERNAL) -> Span:
+             kind: SpanKind = SpanKind.INTERNAL) -> typing.ContextManager[Span]:
         return self.tracer.span(category, name, attributes=attributes, tags=tags, kind=kind)
 
     def active_spans(self) -> typing.List[Span]:

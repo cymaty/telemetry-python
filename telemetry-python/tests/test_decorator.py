@@ -39,7 +39,6 @@ class DecoratorExample(TelemetryMixin):
     def method_invalid_argument_tag(self, arg1: str, arg2: int = 10):
         logging.info(f'method_invalid_argument_tag log')
 
-
     @trace(tag_extractor=extract_args("arg1"))  # arg1 is a complex type, ComplexValue)
     def method_invalid_complex_argument_tag(self, arg1: ComplexValue):
         logging.info(f'method_invalid_complex_argument_tag log')
@@ -47,6 +46,16 @@ class DecoratorExample(TelemetryMixin):
     @trace(tag_extractor=lambda d, fn: {'name': d['arg1']['name']} if 'arg1' in d else {})
     def method_complex_argument_tag(self, arg1: ComplexValue):
         logging.info(f'method_complex_argument_tag log')
+
+    # @trace(tags={'tag1': 't1'}, attributes={'attribute1': 'a1'})
+    # def method_outer(self, arg1: str, arg2: int = 10):
+    #     logging.info(f'method_outer log')
+    #     self.method_inner(f"{arg1}_inner", arg2*2)
+    # 
+    # @trace.tags(tags={'tag_inner': 'tag_inner'}, extractor=extract_args("arg1"))
+    # @trace.attributes(extractor=extract_args("arg2"))
+    # def method_inner(self, arg1: str, arg2: int = 10):
+    #     logging.info(f'method_inner log')
 
 
 class TestDecorator:
@@ -58,9 +67,12 @@ class TestDecorator:
 
         telemetry.collect()
 
-        assert telemetry.get_value_recorder('tests.example.global_method.duration', tags={'span.status': 'OK'}).count == 1
+        assert telemetry.get_value_recorder('trace.span.duration', tags={'trace.span_category': 'tests.example',
+                                                                         'trace.span_name': 'tests.example.global_method',
+                                                                         'trace.span_status': 'OK'}).count == 1
 
-        telemetry.caplog.assert_log_exists(lambda l: l['message'] == 'global_method log')
+        log_record = telemetry.caplog.get_record(lambda l: l['message'] == 'global_method log')
+        assert log_record['attributes']['trace.id']
 
     def test_decorator_default(self, telemetry: TelemetryFixture):
         example = DecoratorExample()
@@ -69,7 +81,10 @@ class TestDecorator:
         telemetry.collect()
 
         assert example.telemetry_category == 'tests.test_decorator.DecoratorExample'
-        assert telemetry.get_value_recorder('tests.test_decorator.DecoratorExample.method_trace_default.duration', tags={'span.status': 'OK'}).count == 1
+        assert telemetry.get_value_recorder('trace.span.duration', tags={
+            'trace.span_category': 'tests.test_decorator.DecoratorExample',
+            'trace.span_name': 'tests.test_decorator.DecoratorExample.method_trace_default',
+            'trace.span_status': 'OK'}).count == 1
 
     def test_decorator_custom(self, telemetry: TelemetryFixture):
         example = DecoratorExample()
@@ -78,8 +93,10 @@ class TestDecorator:
         telemetry.collect()
 
         assert example.telemetry_category == 'tests.test_decorator.DecoratorExample'
-        assert telemetry.get_value_recorder(name='custom_category.method_trace_custom.duration',
-                                            tags={'arg1': 'arg1_value', 'tag1': 't1', 'span.status': 'OK'}).count == 1
+        assert telemetry.get_value_recorder(name='trace.span.duration',
+                                            tags={'arg1': 'arg1_value', 'trace.span_category': 'custom_category',
+                                                  'trace.span_name': 'custom_category.method_trace_custom',
+                                                  'trace.span_status': 'OK', 'tag1': 't1'}).count == 1
 
     def test_decorator_argument_tagging(self, telemetry: TelemetryFixture, caplog):
         telemetry.enable_log_record_capture(caplog)
@@ -90,17 +107,24 @@ class TestDecorator:
 
         telemetry.collect()
 
-        assert telemetry.get_value_recorder(name='custom_category.method_trace_custom.duration',
-                                            tags={'arg1': 'foo', 'tag1': 't1', 'span.status': 'OK'}).count == 2
+        assert telemetry.get_value_recorder(name='trace.span.duration',
+                                            tags={'arg1': 'foo', 'trace.span_category': 'custom_category',
+                                                  'trace.span_name': 'custom_category.method_trace_custom',
+                                                  'trace.span_status': 'OK', 'tag1': 't1'}).count == 2
 
-        telemetry.caplog.get_record(lambda rec: rec['message'] == 'method_trace_custom log' and
-                                                rec['attributes'] == {'tag1': 't1', 'attribute1': 'a1', 'arg1': 'foo',
-                                                                      'arg2': 10, '_tag_keys': ('tag1', 'arg1')})
+        rec = telemetry.caplog.get_record(
+            lambda rec: rec['message'] == 'method_trace_custom log' and rec['attributes']['arg2'] == 10)
 
-        telemetry.caplog.get_record(lambda rec: rec['message'] == 'method_trace_custom log' and
-                                                rec['attributes'] == {'tag1': 't1', 'attribute1': 'a1', 'arg1': 'foo',
-                                                                      'arg2': 20, '_tag_keys': ('tag1', 'arg1')})
+        assert rec['attributes']['tag1'] == 't1'
+        assert rec['attributes']['arg1'] == 'foo'
+        assert rec['attributes']['arg2'] == 10
 
+        rec = telemetry.caplog.get_record(lambda rec: rec['message'] == 'method_trace_custom log' and
+                                                      rec['attributes']['arg2'] == 20)
+
+        assert rec['attributes']['tag1'] == 't1'
+        assert rec['attributes']['arg1'] == 'foo'
+        assert rec['attributes']['arg2'] == 20
 
     def test_decorator_argument_tagging_none(self, telemetry: TelemetryFixture, caplog):
         telemetry.enable_log_record_capture(caplog)
@@ -110,11 +134,16 @@ class TestDecorator:
 
         telemetry.collect()
 
-        assert telemetry.get_value_recorder(name='custom_category.method_trace_custom.duration',
-                                            tags={'arg1': 'foo', 'tag1': 't1', 'span.status': 'OK'}).count == 1
+        assert telemetry.get_value_recorder(name='trace.span.duration',
+                                            tags={'arg1': 'foo', 'tag1': 't1', 'trace.span_status': 'OK',
+                                                  'trace.span_category': 'custom_category',
+                                                  'trace.span_name': 'custom_category.method_trace_custom'}).count == 1
 
-        telemetry.caplog.get_record(lambda rec: rec['attributes'] == {'tag1': 't1', 'attribute1': 'a1', 'arg1': 'foo',
-                                                                      '_tag_keys': ('tag1', 'arg1')})
+        rec = telemetry.caplog.get_record(lambda rec: rec['message'] == 'method_trace_custom log')
+
+        assert rec['attributes']['tag1'] == 't1'
+        assert rec['attributes']['attribute1'] == 'a1'
+        assert rec['attributes']['arg1'] == 'foo'
 
     def test_decorator_complex_argument_tag(self, telemetry: TelemetryFixture):
         example = DecoratorExample()
@@ -122,9 +151,10 @@ class TestDecorator:
 
         telemetry.collect()
 
-        assert telemetry.get_value_recorder(name='tests.test_decorator.DecoratorExample.method_complex_argument_tag.duration',
-                                            tags={'span.status': 'OK'}).count == 1
-
+        assert telemetry.get_value_recorder(name='trace.span.duration',
+                                            tags={'trace.span_status': 'OK',
+                                                  'trace.span_category': 'tests.test_decorator.DecoratorExample',
+                                                  'trace.span_name': 'tests.test_decorator.DecoratorExample.method_complex_argument_tag'}).count == 1
 
     def test_decorator_invalid_argument_tag(self, telemetry: TelemetryFixture, caplog):
         telemetry.enable_log_record_capture(caplog)
@@ -134,7 +164,9 @@ class TestDecorator:
 
         telemetry.collect()
 
-        telemetry.caplog.assert_log_contains("@trace decorator refers to an argument, arg4, that was not found in the signature for DecoratorExample.method_invalid_argument_tag", 'WARNING')
+        telemetry.caplog.assert_log_contains(
+            "@trace decorator refers to an argument, arg4, that was not found in the signature for DecoratorExample.method_invalid_argument_tag",
+            'WARNING')
 
     def test_decorator_ignore_complex_argument_tag(self, telemetry: TelemetryFixture, caplog):
         telemetry.enable_log_record_capture(caplog)
@@ -144,5 +176,31 @@ class TestDecorator:
 
         telemetry.collect()
 
-        assert telemetry.get_value_recorder(name='tests.test_decorator.DecoratorExample.method_complex_argument_tag.duration',
-                                            tags={'span.status': 'OK'}).count == 1
+        assert telemetry.get_value_recorder(name='trace.span.duration',
+                                            tags={'trace.span_status': 'OK',
+                                                  'trace.span_category': 'tests.test_decorator.DecoratorExample',
+                                                  'trace.span_name': 'tests.test_decorator.DecoratorExample.method_complex_argument_tag'}).count == 1
+
+    # def test_decorator_inner(self, telemetry: TelemetryFixture, caplog):
+    #     telemetry.enable_log_record_capture(caplog)
+    #
+    #     example = DecoratorExample()
+    #     example.method_outer("foo", 20)
+    #
+    #     telemetry.collect()
+    #
+    #     assert telemetry.get_value_recorder(name='trace.span.duration',
+    #                                         tags={'tag1': 't1',
+    #                                               'tag_inner': 'tag_inner',
+    #                                               'arg1': 'foo_inner',
+    #                                               'trace.span_status': 'OK',
+    #                                               'trace.span_category': 'tests.test_decorator.DecoratorExample',
+    #                                               'trace.span_name': 'tests.test_decorator.DecoratorExample.method_outer'}).count == 1
+    #
+    #
+    #     rec = telemetry.caplog.get_record(lambda rec: rec['message'] == 'method_outer log')
+    #     assert rec['attributes']['tag1'] == 't1'
+    #
+    #     rec = telemetry.caplog.get_record(lambda rec: rec['message'] == 'method_inner log')
+    #     assert rec['attributes']['tag1'] == 't1'
+
