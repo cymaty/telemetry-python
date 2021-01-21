@@ -101,6 +101,7 @@ class trace(object):
     extract_args = extract_args
 
     def __init__(self,
+                 *,
                  category: Optional[str] = None,
                  tags: Optional[Dict[str, str]] = None,
                  attributes: Optional[Attributes] = None,
@@ -130,13 +131,16 @@ class trace(object):
     def __call__(self, fn, instance, args, kwargs):
         from telemetry import telemetry
 
-        if self.signature is None:
-            self.signature = inspect.signature(fn)
+        if not callable(fn):
+            raise Exception("Invalid use of @trace decorator. All arguments should be passed as keyword arguments, eg: @trace(category='foo')")
+        else:
+            if self.signature is None:
+                self.signature = inspect.signature(fn)
 
-        with telemetry.tracer.span(self._get_category(fn, instance), fn.__name__) as span:
-            invocation = TracedInvocation(self, fn)
-            wrapped_attributes = invocation.wrap_span_attributes(fn, "@trace", span.set_attribute, self.attributes, self.attribute_extractor)
-            wrapped_tags = invocation.wrap_span_attributes(wrapped_attributes, "@trace", span.set_tag, self.tags, self.tag_extractor)
-            return wrapped_tags(*args, **kwargs)
+            with telemetry.tracer.span(self._get_category(fn, instance), fn.__name__) as span:
+                invocation = TracedInvocation(self, fn)
+                wrapped_attributes = invocation.wrap_span_attributes(fn, "@trace", span.set_attribute, self.attributes, self.attribute_extractor)
+                wrapped_tags = invocation.wrap_span_attributes(wrapped_attributes, "@trace", span.set_tag, self.tags, self.tag_extractor)
+                return wrapped_tags(*args, **kwargs)
 
 

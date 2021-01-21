@@ -3,6 +3,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+import pytest
+
 from telemetry import TelemetryMixin, trace, extract_args
 from telemetry.testing import TelemetryFixture
 from tests.example import global_method
@@ -180,6 +182,34 @@ class TestDecorator:
                                             tags={'trace.span_status': 'OK',
                                                   'trace.span_category': 'tests.test_decorator.DecoratorExample',
                                                   'trace.span_name': 'tests.test_decorator.DecoratorExample.method_complex_argument_tag'}).count == 1
+
+
+    def test_decorator_local_def(self, telemetry: TelemetryFixture):
+        @trace(tag_extractor=extract_args("arg"))
+        def foo(arg: str):
+            time.sleep(.1)
+            return "value"
+
+        foo('arg1')
+
+        telemetry.collect()
+
+        assert telemetry.get_value_recorder('trace.span.duration', tags={
+            'trace.span_category': 'tests.test_decorator',
+            'trace.span_name': 'tests.test_decorator.foo',
+            'trace.span_status': 'OK',
+            'arg': 'arg1'}).count == 1
+
+    def test_decorator_throws_exception_on_invalid_usage(self, telemetry: TelemetryFixture):
+        """
+        Exception should be raised in this case since the "foo" will not be passed as a decorator value but used as the
+        wrapping function instead
+        """
+        with pytest.raises(Exception):
+            @trace("foo")
+            def foo(arg: str):
+                pass
+
 
     # def test_decorator_inner(self, telemetry: TelemetryFixture, caplog):
     #     telemetry.enable_log_record_capture(caplog)
