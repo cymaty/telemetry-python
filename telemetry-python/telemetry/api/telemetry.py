@@ -50,9 +50,9 @@ class Telemetry(abc.ABC):
     def initialize(self):
         from telemetry.api.helpers.environment import Environment
 
-        logging.info("Initializing telemetry")
-
         self.environment = Environment()
+
+        logging.info(f"Initializing Telemetry API [exporters: ${os.environ.get('METRICS_EXPORTERS')}]")
 
         metric_exporters = (os.environ.get('METRICS_EXPORTERS') or '').lower()
         if 'prometheus' in metric_exporters:
