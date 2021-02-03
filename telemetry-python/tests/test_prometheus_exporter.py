@@ -24,8 +24,8 @@ class TestPrometheusExporter:
         response = http.request('GET', 'http://localhost:19102/metrics')
         lines = response.data.decode('utf8').split('\n')
 
-        assert len(list(filter(lambda line: 'test_prefix_trace_span_duration_count' in line, lines))) == 1
-        assert len(list(filter(lambda line: 'test_prefix_trace_span_duration_sum' in line, lines))) == 1
+        assert len(list(filter(lambda line: 'test_prefix_trace_duration_count' in line, lines))) == 1
+        assert len(list(filter(lambda line: 'test_prefix_trace_duration_sum' in line, lines))) == 1
 
         telemetry.shutdown()
 

@@ -45,7 +45,7 @@ class GaugeInfo:
 class TelemetryFixture(Telemetry):
     def __init__(self):
         span_tracker = SynchronousSpanTracker()
-        super().__init__(span_tracker=span_tracker)
+        super().__init__(span_tracker=span_tracker, stateful=False)
         self.span_exporter = InMemorySpanExporter()
         self.metrics_exporter = InMemoryMetricsExporter()
         self.add_span_exporter(span_exporter=self.span_exporter)

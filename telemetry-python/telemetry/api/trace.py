@@ -90,8 +90,8 @@ class SpanTracker(trace_sdk.SpanProcessor):
             wrapped_span.set_tag(name, value)
 
         instrumentor = span.instrumentation_info.name.replace('opentelemetry.instrumentation.', '')
-        wrapped_span.set_tag("trace.span_category", instrumentor)
-        wrapped_span.set_tag("trace.span_name", wrapped_span.qname)
+        wrapped_span.set_tag("trace.category", instrumentor)
+        wrapped_span.set_tag("trace.name", wrapped_span.qname)
 
         super().on_start(span, parent_context)
 
@@ -113,14 +113,14 @@ class SpanTracker(trace_sdk.SpanProcessor):
         elapsed_ms = int((span.end_time - span.start_time) / 1000000)
 
 
-        metric = self._telemetry.metrics._get_metric("trace", f"span.duration", int, metrics_sdk.ValueRecorder, unit="ms")
+        metric = self._telemetry.metrics._get_metric("trace", f"duration", int, metrics_sdk.ValueRecorder, unit="ms")
 
         tags = wrapped_span.tags
 
         metric.record(elapsed_ms, labels=tags)
 
         if span.status.status_code == StatusCode.ERROR:
-            error_counter = self._telemetry.metrics._get_metric("trace", f"span.errors", int, metrics_sdk.Counter)
+            error_counter = self._telemetry.metrics._get_metric("trace", f"errors", int, metrics_sdk.Counter)
             error_counter.add(1, labels=tags)
             
         with self._lock:
@@ -270,8 +270,8 @@ class Span:
         attributes['trace.is_remote'] = self._span.context.is_remote
 
         if not self._span.status.is_unset:
-            attributes['trace.span_status'] = self._span.status.status_code.name
-            attributes['trace.span_description'] = self._span.status.description
+            attributes['trace.status'] = self._span.status.status_code.name
+            attributes['trace.description'] = self._span.status.description
             attributes['trace.span_kind'] = self._span.kind.name
 
         return attributes
@@ -282,8 +282,8 @@ class Span:
 
         tags = {}
         attributes_as_tags = set(self.attributes.get(_TAG_ATTRIBUTES_KEY, ()))
-        attributes_as_tags.add('trace.span_status')
-        attributes_as_tags.add('trace.span_name')
+        attributes_as_tags.add('trace.status')
+        attributes_as_tags.add('trace.name')
 
         for key in attributes_as_tags:
             if key in self.attributes:

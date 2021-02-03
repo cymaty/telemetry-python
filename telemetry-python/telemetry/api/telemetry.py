@@ -26,7 +26,7 @@ def _repo_url():
 class Telemetry(abc.ABC):
     _instance: 'Telemetry' = None
 
-    def __init__(self, span_tracker=None):
+    def __init__(self, span_tracker=None, stateful=True):
         from telemetry.api.otel.meter_provider import ManagedMeterProvider
         from telemetry.api.helpers.environment import Environment
 
@@ -36,7 +36,7 @@ class Telemetry(abc.ABC):
         self.span_tracker = span_tracker
         self.tracer_provider = TracerProvider(active_span_processor=self.span_tracker)
         self.tracer = Tracer(self.tracer_provider)
-        self.meter_provider = ManagedMeterProvider(stateful=False)
+        self.meter_provider = ManagedMeterProvider(stateful=stateful)
         self.metrics = Metrics(self, self.meter_provider)
         self.span_tracker.set_telemetry(self)
         self.environment = Environment()

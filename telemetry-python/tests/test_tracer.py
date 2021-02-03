@@ -1,4 +1,3 @@
-import pytest
 import responses
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 
@@ -22,7 +21,7 @@ class TestTracer:
 
                     telemetry.counter('test', 'counter3', tags={'counter_tag': 'counter_tag'})
 
-                    assert span3.attributes == {'_tag_keys': ('trace.span_category', 'trace.span_name', 'tag1', 'tag2', 'tag3'),
+                    assert span3.attributes == {'_tag_keys': ('trace.category', 'trace.name', 'tag1', 'tag2', 'tag3'),
                                                 'attrib1': 'attrib1',
                                                 'attrib2': 'attrib2',
                                                 'attrib3': 'attrib3',
@@ -32,12 +31,12 @@ class TestTracer:
                                                 'trace.id': str(span3.context.trace_id),
                                                 'trace.span_id': str(span3.context.span_id),
                                                 'trace.is_remote': False,
-                                                'trace.span_category': 'test',
-                                                'trace.span_name': 'test.span3'
+                                                'trace.category': 'test',
+                                                'trace.name': 'test.span3'
                                                 }
 
-                    assert span3.tags == {'trace.span_category': 'test',
-                                          'trace.span_name': 'test.span3',
+                    assert span3.tags == {'trace.category': 'test',
+                                          'trace.name': 'test.span3',
                                           'tag1': 'tag1',
                                           'tag2': 'tag2',
                                           'tag3': 'tag3'}
@@ -50,18 +49,18 @@ class TestTracer:
         telemetry.collect()
 
         assert telemetry.get_counter('test.counter1', tags={'tag1': 'tag1',
-                                                            'trace.span_category': 'test',
-                                                            'trace.span_name': 'test.span1'}).value == 1
+                                                            'trace.category': 'test',
+                                                            'trace.name': 'test.span1'}).value == 1
         assert telemetry.get_counter('test.counter2', tags={'tag1': 'tag1',
                                                             'tag2': 'tag2',
-                                                            'trace.span_category': 'test',
-                                                            'trace.span_name': 'test.span2'}).value == 1
+                                                            'trace.category': 'test',
+                                                            'trace.name': 'test.span2'}).value == 1
         assert telemetry.get_counter('test.counter3', tags={'tag1': 'tag1',
                                                             'tag2': 'tag2',
                                                             'tag3': 'tag3',
                                                             'counter_tag': 'counter_tag',
-                                                            'trace.span_category': 'test',
-                                                            'trace.span_name': 'test.span3'}).value == 1
+                                                            'trace.category': 'test',
+                                                            'trace.name': 'test.span3'}).value == 1
         assert len(telemetry.get_finished_spans()) == 3
 
     def test_mixin(self, telemetry: TelemetryFixture, caplog):
@@ -82,8 +81,8 @@ class TestTracer:
 
         # method1 (direct, inside span)
         assert telemetry.get_counter('tests.example.ExampleClass.method1_counter_inside_span', tags={'tag1': 'value1',
-                                                                                                     'trace.span_category': 'tests.example.ExampleClass',
-                                                                                                     'trace.span_name': 'tests.example.ExampleClass.method1'}).value == 1
+                                                                                                     'trace.category': 'tests.example.ExampleClass',
+                                                                                                     'trace.name': 'tests.example.ExampleClass.method1'}).value == 1
 
         # method2 (direct)
         assert telemetry.get_counter('tests.example.ExampleClass.method2_counter').value == 1
@@ -91,74 +90,74 @@ class TestTracer:
         # method2 (direct, inside span)
         assert telemetry.get_counter('tests.example.ExampleClass.method2_counter_inside_span',
                                      tags={'tag2': 'value2',
-                                           'trace.span_category': 'tests.example.ExampleClass',
-                                           'trace.span_name': 'tests.example.ExampleClass.method2'}).value == 1  # method2 (inside span)
+                                           'trace.category': 'tests.example.ExampleClass',
+                                           'trace.name': 'tests.example.ExampleClass.method2'}).value == 1  # method2 (inside span)
 
         # method2 (indirect)
         assert telemetry.get_counter('tests.example.ExampleClass.method2_counter', tags={'tag1': 'value1',
-                                                                                         'trace.span_category': 'tests.example.ExampleClass',
-                                                                                         'trace.span_name': 'tests.example.ExampleClass.method1'}).value == 1
+                                                                                         'trace.category': 'tests.example.ExampleClass',
+                                                                                         'trace.name': 'tests.example.ExampleClass.method1'}).value == 1
 
         # method2 (indirect, inside span)
         assert telemetry.get_counter('tests.example.ExampleClass.method2_counter_inside_span',
                                      tags={'tag1': 'value1', 'tag2': 'value2',
-                                           'trace.span_category': 'tests.example.ExampleClass',
-                                           'trace.span_name': 'tests.example.ExampleClass.method2'}).value == 1
+                                           'trace.category': 'tests.example.ExampleClass',
+                                           'trace.name': 'tests.example.ExampleClass.method2'}).value == 1
 
         assert len(telemetry.get_counters()) == 8
 
         # method1 (direct)
-        assert telemetry.get_value_recorder('trace.span.duration',
-                                            tags={'trace.span_status': 'OK', 'tag1': 'value1',
-                                                  'trace.span_category': 'tests.example.ExampleClass',
-                                                  'trace.span_name': 'tests.example.ExampleClass.method1'}).count == 1
-        
-        assert telemetry.get_value_recorder('trace.span.duration',
-                                            tags={'trace.span_status': 'OK', 'tag1': 'value1',
-                                                  'trace.span_category': 'tests.example.ExampleClass',
-                                                  'trace.span_name': 'tests.example.ExampleClass.method1'}).sum >= 100
-        assert telemetry.get_value_recorder('trace.span.duration',
-                                            tags={'trace.span_status': 'OK', 'tag1': 'value1',
-                                                  'trace.span_category': 'tests.example.ExampleClass',
-                                                  'trace.span_name': 'tests.example.ExampleClass.method1'}).min >= 100
-        assert telemetry.get_value_recorder('trace.span.duration',
-                                            tags={'trace.span_status': 'OK', 'tag1': 'value1',
-                                                  'trace.span_category': 'tests.example.ExampleClass',
-                                                  'trace.span_name': 'tests.example.ExampleClass.method1'}).max >= 100
+        assert telemetry.get_value_recorder('trace.duration',
+                                            tags={'trace.status': 'OK', 'tag1': 'value1',
+                                                  'trace.category': 'tests.example.ExampleClass',
+                                                  'trace.name': 'tests.example.ExampleClass.method1'}).count == 1
+
+        assert telemetry.get_value_recorder('trace.duration',
+                                            tags={'trace.status': 'OK', 'tag1': 'value1',
+                                                  'trace.category': 'tests.example.ExampleClass',
+                                                  'trace.name': 'tests.example.ExampleClass.method1'}).sum >= 100
+        assert telemetry.get_value_recorder('trace.duration',
+                                            tags={'trace.status': 'OK', 'tag1': 'value1',
+                                                  'trace.category': 'tests.example.ExampleClass',
+                                                  'trace.name': 'tests.example.ExampleClass.method1'}).min >= 100
+        assert telemetry.get_value_recorder('trace.duration',
+                                            tags={'trace.status': 'OK', 'tag1': 'value1',
+                                                  'trace.category': 'tests.example.ExampleClass',
+                                                  'trace.name': 'tests.example.ExampleClass.method1'}).max >= 100
 
         # method2 (direct)
-        assert telemetry.get_value_recorder('trace.span.duration',
-                                            tags={'trace.span_status': 'OK', 'tag2': 'value2',
-                                                  'trace.span_category': 'tests.example.ExampleClass',
-                                                  'trace.span_name': 'tests.example.ExampleClass.method2'}).count == 1
-        assert telemetry.get_value_recorder('trace.span.duration',
-                                            tags={'trace.span_status': 'OK', 'tag2': 'value2',
-                                                  'trace.span_category': 'tests.example.ExampleClass',
-                                                  'trace.span_name': 'tests.example.ExampleClass.method2'}).sum >= 100
-        assert telemetry.get_value_recorder('trace.span.duration',
-                                            tags={'trace.span_status': 'OK', 'tag2': 'value2',
-                                                  'trace.span_category': 'tests.example.ExampleClass',
-                                                  'trace.span_name': 'tests.example.ExampleClass.method2'}).min >= 100
-        assert telemetry.get_value_recorder('trace.span.duration',
-                                            tags={'trace.span_status': 'OK', 'tag2': 'value2',
-                                                  'trace.span_category': 'tests.example.ExampleClass',
-                                                  'trace.span_name': 'tests.example.ExampleClass.method2'}).max >= 100
-        
+        assert telemetry.get_value_recorder('trace.duration',
+                                            tags={'trace.status': 'OK', 'tag2': 'value2',
+                                                  'trace.category': 'tests.example.ExampleClass',
+                                                  'trace.name': 'tests.example.ExampleClass.method2'}).count == 1
+        assert telemetry.get_value_recorder('trace.duration',
+                                            tags={'trace.status': 'OK', 'tag2': 'value2',
+                                                  'trace.category': 'tests.example.ExampleClass',
+                                                  'trace.name': 'tests.example.ExampleClass.method2'}).sum >= 100
+        assert telemetry.get_value_recorder('trace.duration',
+                                            tags={'trace.status': 'OK', 'tag2': 'value2',
+                                                  'trace.category': 'tests.example.ExampleClass',
+                                                  'trace.name': 'tests.example.ExampleClass.method2'}).min >= 100
+        assert telemetry.get_value_recorder('trace.duration',
+                                            tags={'trace.status': 'OK', 'tag2': 'value2',
+                                                  'trace.category': 'tests.example.ExampleClass',
+                                                  'trace.name': 'tests.example.ExampleClass.method2'}).max >= 100
+
         # method2 (indirect)
-        assert telemetry.get_value_recorder('trace.span.duration',
-                                            tags={'trace.span_status': 'OK', 'tag1': 'value1', 'tag2': 'value2',
-                                                  'trace.span_category': 'tests.example.ExampleClass',
-                                                  'trace.span_name': 'tests.example.ExampleClass.method2'}).count == 1
+        assert telemetry.get_value_recorder('trace.duration',
+                                            tags={'trace.status': 'OK', 'tag1': 'value1', 'tag2': 'value2',
+                                                  'trace.category': 'tests.example.ExampleClass',
+                                                  'trace.name': 'tests.example.ExampleClass.method2'}).count == 1
 
         # error (direct)
-        assert telemetry.get_value_recorder('trace.span.duration',
-                                            tags={'trace.span_status': 'ERROR',
-                                                  'trace.span_category': 'tests.example.ExampleClass',
-                                                  'trace.span_name': 'tests.example.ExampleClass.error'}).count == 1
+        assert telemetry.get_value_recorder('trace.duration',
+                                            tags={'trace.status': 'ERROR',
+                                                  'trace.category': 'tests.example.ExampleClass',
+                                                  'trace.name': 'tests.example.ExampleClass.error'}).count == 1
 
-        assert telemetry.get_counter('trace.span.errors', tags={'trace.span_status': 'ERROR',
-                                                                'trace.span_category': 'tests.example.ExampleClass',
-                                                                'trace.span_name': 'tests.example.ExampleClass.error'}).value == 1
+        assert telemetry.get_counter('trace.errors', tags={'trace.status': 'ERROR',
+                                                           'trace.category': 'tests.example.ExampleClass',
+                                                           'trace.name': 'tests.example.ExampleClass.error'}).value == 1
 
         assert len(telemetry.get_value_recorders()) == 4
 
@@ -171,41 +170,41 @@ class TestTracer:
         telemetry.collect()
         method1_span = telemetry.get_finished_spans(name_filter=lambda name: name == 'tests.example.ExampleClass.method1')[0]
         method2_span = telemetry.get_finished_spans(name_filter=lambda name: name == 'tests.example.ExampleClass.method2')[0]
-        
+
         log_record = telemetry.caplog.get_record(lambda l: l['message'] == 'method1 log')
-        assert log_record['attributes'] == {'_tag_keys': ('trace.span_category', 'trace.span_name', 'tag1'),
+        assert log_record['attributes'] == {'_tag_keys': ('trace.category', 'trace.name', 'tag1'),
                                             'key1': 'value1',
                                             'trace.id': method1_span.context.trace_id,
                                             'trace.span_id': method1_span.context.span_id,
                                             'trace.is_remote': False,
-                                            'trace.span_category': 'tests.example.ExampleClass',
-                                            'trace.span_name': 'tests.example.ExampleClass.method1',
+                                            'trace.category': 'tests.example.ExampleClass',
+                                            'trace.name': 'tests.example.ExampleClass.method1',
                                             'tag1': 'value1'}
 
         log_record = telemetry.caplog.get_record(lambda l: l['message'] == 'method2 log')
-        assert log_record['attributes'] == {'_tag_keys': ('trace.span_category', 'trace.span_name', 'tag1', 'tag2'),
+        assert log_record['attributes'] == {'_tag_keys': ('trace.category', 'trace.name', 'tag1', 'tag2'),
                                             'key1': 'value1',
                                             'key2': 'value2',
                                             'trace.id': method2_span.context.trace_id,
                                             'trace.span_id': method2_span.context.span_id,
                                             'trace.is_remote': False,
-                                            'trace.span_category': 'tests.example.ExampleClass',
-                                            'trace.span_name': 'tests.example.ExampleClass.method2',
+                                            'trace.category': 'tests.example.ExampleClass',
+                                            'trace.name': 'tests.example.ExampleClass.method2',
                                             'tag1': 'value1',
                                             'tag2': 'value2'}
 
         telemetry.collect()
 
         assert example.telemetry_category == 'tests.example.ExampleClass'
-        assert telemetry.get_value_recorder(name='trace.span.duration',
-                                            tags={'trace.span_status': 'OK', 'tag1': 'value1',
-                                                  'trace.span_category': 'tests.example.ExampleClass',
-                                                  'trace.span_name': 'tests.example.ExampleClass.method1'}).count == 1
+        assert telemetry.get_value_recorder(name='trace.duration',
+                                            tags={'trace.status': 'OK', 'tag1': 'value1',
+                                                  'trace.category': 'tests.example.ExampleClass',
+                                                  'trace.name': 'tests.example.ExampleClass.method1'}).count == 1
 
-        assert telemetry.get_value_recorder(name='trace.span.duration',
-                                            tags={'trace.span_status': 'OK', 'tag1': 'value1', 'tag2': 'value2',
-                                                  'trace.span_category': 'tests.example.ExampleClass',
-                                                  'trace.span_name': 'tests.example.ExampleClass.method2'}).count == 1
+        assert telemetry.get_value_recorder(name='trace.duration',
+                                            tags={'trace.status': 'OK', 'tag1': 'value1', 'tag2': 'value2',
+                                                  'trace.category': 'tests.example.ExampleClass',
+                                                  'trace.name': 'tests.example.ExampleClass.method2'}).count == 1
         assert len(telemetry.get_value_recorders()) == 2
 
     def test_span_events(self, telemetry: TelemetryFixture):
@@ -240,10 +239,10 @@ class TestTracer:
 
         telemetry.collect()
 
-        assert telemetry.get_value_recorder(name='trace.span.duration',
+        assert telemetry.get_value_recorder(name='trace.duration',
                                             tags={'component': 'http', 'http.method': 'GET',
-                                                  'trace.span_category': 'requests', 'trace.span_name': 'requests.HTTP GET',
-                                                  'trace.span_status': 'ERROR'}).count == 1
+                                                  'trace.category': 'requests', 'trace.name': 'requests.HTTP GET',
+                                                  'trace.status': 'ERROR'}).count == 1
 
     def test_span_listener(self, telemetry: TelemetryFixture):
         from telemetry.api import SpanListener
@@ -260,9 +259,9 @@ class TestTracer:
 
         telemetry.collect()
 
-        assert telemetry.get_value_recorder(name='trace.span.duration',
-                                            tags={'env': 'test', 'trace.span_category': 'category1',
-                                                  'trace.span_name': 'category1.span1', 'trace.span_status': 'OK'}).count == 1
+        assert telemetry.get_value_recorder(name='trace.duration',
+                                            tags={'env': 'test', 'trace.category': 'category1',
+                                                  'trace.name': 'category1.span1', 'trace.status': 'OK'}).count == 1
 
     def test_invalid_attributes(self, telemetry: TelemetryFixture, caplog):
         telemetry.enable_log_record_capture(caplog)
@@ -276,9 +275,8 @@ class TestTracer:
         with telemetry.span('test', 'span1') as span:
             for name in invalid_names:
                 span.set_attribute(name, "value")
-                telemetry.caplog\
+                telemetry.caplog \
                     .assert_log_contains(f"attribute/tag name must match the pattern: _*[a-zA-Z0-9_.\\-]+ (name={name})", 'WARNING')
-
 
     def test_invalid_tags(self, telemetry: TelemetryFixture, caplog):
         telemetry.enable_log_record_capture(caplog)
@@ -298,7 +296,7 @@ class TestTracer:
             span.set_tag("foo", 1)
             telemetry.caplog.assert_log_contains(
                 f"Tag value for must be a string! (name=foo, value=1)", 'WARNING')
-            
+
             span.set_tag("foo", 1.0)
             telemetry.caplog.assert_log_contains(
                 f"Tag value for must be a string! (name=foo, value=1.0)", 'WARNING')
@@ -306,4 +304,3 @@ class TestTracer:
             span.set_tag("foo", True)
             telemetry.caplog.assert_log_contains(
                 f"Tag value for must be a string! (name=foo, value=True)", 'WARNING')
-
