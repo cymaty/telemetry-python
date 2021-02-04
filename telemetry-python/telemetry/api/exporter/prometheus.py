@@ -151,7 +151,7 @@ class CustomCollector:
     def add_metrics_data(self, export_records: Sequence[ExportRecord]) -> None:
         logging.info(f"Exporting {len(export_records)} records")
         for rec in export_records:
-            logging.info(f"{rec.resource}")
+            logging.info(f"{rec.resource.attributes}")
 
         self._metrics_to_export.append(export_records)
 
