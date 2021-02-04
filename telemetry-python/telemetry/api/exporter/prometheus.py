@@ -69,6 +69,7 @@ import re
 import os
 from typing import Iterable, Optional, Sequence, Union
 
+from opentelemetry.sdk.util.instrumentation import InstrumentationInfo
 from prometheus_client.core import (
     REGISTRY,
     CounterMetricFamily,
@@ -116,20 +117,24 @@ class PrometheusMetricsExporter(MetricsExporter):
         if start_server:
             start_http_server(port=int(metrics_port), addr=metrics_bind_address)
 
-    def _get_collector(self, name: str) -> 'CustomCollector':
-        col = self.collectors.get(name)
+    def _get_collector(self, instrumentor: InstrumentationInfo) -> 'CustomCollector':
+        col = self.collectors.get(instrumentor)
         if not col:
-            logger.info(f"Registering collector: {name}")
-            col = CustomCollector(self.prefix)
+            logger.info(f"Registering collector for: {instrumentor}")
+            col = CustomCollector(instrumentor, self.prefix)
             REGISTRY.register(col)
-            self.collectors[name] = col
+            self.collectors[instrumentor] = col
+
         return col
 
     def export(self, export_records: Sequence[ExportRecord]) -> MetricsExportResult:
+        collector: Optional[CustomCollector] = None
         for rec in export_records:
-            print(rec.instrument)
+            if collector is None or collector.instrumentation_info != rec.instrument.meter.instrumentation_info:
+                logging.info(f"Fetching collector for {rec.instrument.meter.instrumentation_info}")
+                collector = self._get_collector(rec.instrument.meter.instrumentation_info)
+            collector.add_metrics_data(export_records)
 
-        self._collector.add_metrics_data(export_records)
         return MetricsExportResult.SUCCESS
 
     def shutdown(self) -> None:
@@ -141,7 +146,8 @@ class CustomCollector:
     https://github.com/prometheus/client_python#custom-collectors
     """
 
-    def __init__(self, prefix: str = ""):
+    def __init__(self, instrumentor: InstrumentationInfo, prefix: str = ""):
+        self.instrumentation_info = instrumentor
         self._prefix = prefix
         self._metrics_to_export = collections.deque()
         self._non_letters_nor_digits_re = re.compile(
@@ -149,10 +155,6 @@ class CustomCollector:
         )
 
     def add_metrics_data(self, export_records: Sequence[ExportRecord]) -> None:
-        logging.info(f"Exporting {len(export_records)} records")
-        for rec in export_records:
-            logging.info(f"{rec.resource.attributes}")
-
         self._metrics_to_export.append(export_records)
 
     def collect(self):
