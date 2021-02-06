@@ -25,9 +25,9 @@ class InstrumentorSpanListener(SpanProcessor):
         self.delegate.on_end(span)
 
 
-class labelAttributes(SpanProcessor):
+class LabelAttributes(SpanProcessor):
     """
-    Will mark specified span attributes as metrics labels
+    Will mark specified span attributes as labels
     """
     def __init__(self, *attributes: str):
         self.attributes = attributes
