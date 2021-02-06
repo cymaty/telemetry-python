@@ -9,7 +9,7 @@ import wrapt
 
 from telemetry.api.trace import Attributes
 
-ArgumentTagger = typing.Callable[[any], Optional[str]]
+Argumentlabelger = typing.Callable[[any], Optional[str]]
 AttributeExtractor = typing.Callable[[Dict[str, any], typing.Callable[[any], any]], Dict[str, any]]
 
 def extract_args(*args: str) -> Optional[AttributeExtractor]:
@@ -19,7 +19,7 @@ def extract_args(*args: str) -> Optional[AttributeExtractor]:
             if name not in values:
                 logging.warning(
                     f"@trace decorator refers to an argument, {name}, that was not found in the "
-                    f"signature for {fn.__qualname__}! (this tag will not be added)")
+                    f"signature for {fn.__qualname__}! (this label will not be added)")
             else:
                 out[name] = values[name]
         return out
@@ -90,7 +90,7 @@ class TracedInvocation:
                             setter(name, value)
                 except BaseException as ex:
                     logging.warning(
-                        f"{decorator_name} decorator for {self.target.__qualname__} threw an exception during tag extraction! {ex}")
+                        f"{decorator_name} decorator for {self.target.__qualname__} threw an exception during label extraction! {ex}")
 
             return fn(*args, **kwargs)
 
@@ -103,18 +103,18 @@ class trace(object):
     def __init__(self,
                  *,
                  category: Optional[str] = None,
-                 tags: Optional[Dict[str, str]] = None,
+                 labels: Optional[Dict[str, str]] = None,
                  attributes: Optional[Attributes] = None,
                  attribute_extractor: Optional[AttributeExtractor] = None,
-                 tag_extractor: Optional[AttributeExtractor] = None
+                 label_extractor: Optional[AttributeExtractor] = None
                  ):
 
         self.signature = None
         self.category = category
-        self.tags = tags
-        self.attributes = attributes
+        self.labels = labels or {}
+        self.attributes = attributes or {}
         self.attribute_extractor = attribute_extractor
-        self.tag_extractor = tag_extractor
+        self.label_extractor = label_extractor
 
     def _get_category(self, fn, instance):
         import inspect
@@ -137,10 +137,10 @@ class trace(object):
             if self.signature is None:
                 self.signature = inspect.signature(fn)
 
-            with telemetry.tracer.span(self._get_category(fn, instance), fn.__name__) as span:
+            with telemetry.tracer.span(self._get_category(fn, instance), fn.__name__, labels=self.labels) as span:
                 invocation = TracedInvocation(self, fn)
                 wrapped_attributes = invocation.wrap_span_attributes(fn, "@trace", span.set_attribute, self.attributes, self.attribute_extractor)
-                wrapped_tags = invocation.wrap_span_attributes(wrapped_attributes, "@trace", span.set_tag, self.tags, self.tag_extractor)
-                return wrapped_tags(*args, **kwargs)
+                wrapped_labels = invocation.wrap_span_attributes(wrapped_attributes, "@trace", span.set_label, self.labels, self.label_extractor)
+                return wrapped_labels(*args, **kwargs)
 
 

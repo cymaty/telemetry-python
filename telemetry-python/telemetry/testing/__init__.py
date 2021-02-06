@@ -7,9 +7,9 @@ from _pytest.logging import LogCaptureFixture
 from opentelemetry.sdk.metrics import PushController, Counter, ValueRecorder, ValueObserver, UpDownCounter
 from opentelemetry.sdk.metrics.export import ExportRecord
 from opentelemetry.sdk.metrics.export.in_memory_metrics_exporter import InMemoryMetricsExporter
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from telemetry import Telemetry, SynchronousSpanTracker, Span
+from telemetry import Telemetry, Span
+from telemetry.api.exporter.memory import InMemorySpanExporter
 from telemetry.api.logger.json import JsonLogFormatter
 from telemetry.api.trace import Attributes
 
@@ -18,7 +18,7 @@ from telemetry.api.trace import Attributes
 class CounterInfo:
     name: str
     value: Union[int, float]
-    tags: Dict[str, str] = field(default_factory=dict)
+    labels: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -28,7 +28,7 @@ class ValueRecorderInfo:
     max: Union[int, float]
     sum: Union[int, float]
     count: int
-    tags: Dict[str, str] = field(default_factory=dict)
+    labels: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -39,13 +39,13 @@ class GaugeInfo:
     sum: Union[int, float]
     last: Union[int, float]
     count: int
-    tags: Dict[str, str] = field(default_factory=dict)
+    labels: Dict[str, str] = field(default_factory=dict)
+
 
 
 class TelemetryFixture(Telemetry):
-    def __init__(self):
-        span_tracker = SynchronousSpanTracker()
-        super().__init__(span_tracker=span_tracker, stateful=False)
+    def __init__(self, stateful: bool = False):
+        super().__init__(span_processor=None, stateful=stateful)
         self.span_exporter = InMemorySpanExporter()
         self.metrics_exporter = InMemoryMetricsExporter()
         self.add_span_exporter(span_exporter=self.span_exporter)
@@ -61,23 +61,23 @@ class TelemetryFixture(Telemetry):
         """
         caplog.handler.setFormatter(self.caplog)
 
-    def _get_tags(self, metric: ExportRecord):
-        return dict(filter(lambda tag: not tag[0].startswith('_'), metric.labels))
+    def _get_labels(self, metric: ExportRecord):
+        return dict(filter(lambda label: not label[0].startswith('_'), metric.labels))
 
     def _find_metric(self,
                      metric_type: Type,
                      name: str,
-                     tags: Optional[Dict[str, str]] = None) -> Optional[ExportRecord]:
+                     labels: Optional[Dict[str, str]] = None) -> Optional[ExportRecord]:
 
-        tags = tags or {}
+        labels = labels or {}
 
         def fail_no_match(msg: str, candidates: Optional[List[ExportRecord]] = None):
             if candidates is None:
                 candidates = self.metrics_exporter.get_exported_metrics()
-            msg = f"{msg}\n\nMetric:\n\t{name} {tags}\n\nRecorded {metric_type.__name__} metric(s):\n"
+            msg = f"{msg}\n\nMetric:\n\t{name} {labels}\n\nRecorded {metric_type.__name__} metric(s):\n"
             if len(candidates) > 0:
                 for m in candidates:
-                    msg = f"{msg}\t{m.instrument.name} {self._get_tags(m)}\n"
+                    msg = f"{msg}\t{m.instrument.name} {self._get_labels(m)}\n"
             else:
                 msg = f"{msg}\t(none)"
             return msg
@@ -95,38 +95,39 @@ class TelemetryFixture(Telemetry):
             candidates.append(m)
 
             if m.instrument.name == name:
-                if self._get_tags(m) == tags:
+                if self._get_labels(m) == labels:
                     return m  # exact match, return immediately
 
         pytest.fail(fail_no_match(f"No matching {metric_type.__name__} metric found!", candidates))
 
     def collect(self):
         self.collected = True
-        for controller in self.meter_provider._controllers:
+        for controller in self.metrics.meter_provider._controllers:
             if isinstance(controller, PushController):
                 controller.tick()
 
     def get_metrics(self,
                     type_filter: Callable[[Type], bool] = lambda v: True,
                     name_filter: Callable[[str], bool] = lambda v: True,
-                    tag_filter: Callable[[Dict[str, str]], bool] = lambda v: True) -> List[
+                    label_filter: Callable[[Dict[str, str]], bool] = lambda v: True,
+                    instrumentor_filter: Callable[[str], bool] = lambda v: True) -> List[
         Union[CounterInfo, ValueRecorderInfo]]:
         metrics = []
         for metric in self.metrics_exporter.get_exported_metrics():
             m: ExportRecord = metric
-            if not type_filter(type(m.instrument)) or not name_filter(m.instrument.name) or not tag_filter(
-                    self._get_tags(m)):
+            if not type_filter(type(m.instrument)) or not name_filter(m.instrument.name) or \
+                    not label_filter(self._get_labels(m)) or not instrumentor_filter(m.instrument.meter.instrumentation_info.name):
                 continue
 
             if type(m.instrument) == Counter:
-                metrics.append(CounterInfo(m.instrument.name, m.aggregator.checkpoint, self._get_tags(m)))
+                metrics.append(CounterInfo(m.instrument.name, m.aggregator.checkpoint, self._get_labels(m)))
             elif type(m.instrument) == ValueRecorder:
                 metrics.append(ValueRecorderInfo(m.instrument.name,
                                                  m.aggregator.checkpoint.min,
                                                  m.aggregator.checkpoint.max,
                                                  m.aggregator.checkpoint.sum,
                                                  m.aggregator.checkpoint.count,
-                                                 self._get_tags(m)))
+                                                 self._get_labels(m)))
             else:
                 # TODO: other metric types?
                 pass
@@ -134,56 +135,55 @@ class TelemetryFixture(Telemetry):
         return metrics
 
     def get_counters(self, name_filter: Callable[[str], bool] = lambda v: True,
-                     tag_filter: Callable[[Dict[str, str]], bool] = lambda v: True) -> List[CounterInfo]:
-        return self.get_metrics(type_filter=lambda t: t == Counter, name_filter=name_filter, tag_filter=tag_filter)
+                     label_filter: Callable[[Dict[str, str]], bool] = lambda v: True) -> List[CounterInfo]:
+        return self.get_metrics(type_filter=lambda t: t == Counter, name_filter=name_filter, label_filter=label_filter)
 
     def get_finished_spans(self, name_filter: Callable[[str], bool] = lambda v: True,
                            attribute_filter: Callable[[Attributes], bool] = lambda v: True,
-                           tag_filter: Callable[[Dict[str, str]], bool] = lambda v: True) -> List[Span]:
+                           label_filter: Callable[[Dict[str, str]], bool] = lambda v: True) -> List[Span]:
         spans = []
 
         for span in self.span_exporter.get_finished_spans():
-            wrapped_span = Span(span)
-            if not name_filter(f"{wrapped_span.qname}") or not attribute_filter(
-                    wrapped_span.attributes) or not tag_filter(wrapped_span.tags):
+            if not name_filter(f"{span.qname}") or not attribute_filter(
+                    span.attributes) or not label_filter(span.labels):
                 continue
-            spans.append(wrapped_span)
+            spans.append(span)
 
         return spans
 
     def get_value_recorders(self, name_filter: Callable[[str], bool] = lambda v: True,
-                            tag_filter: Callable[[Dict[str, str]], bool] = lambda v: True) -> List[ValueRecorderInfo]:
+                            label_filter: Callable[[Dict[str, str]], bool] = lambda v: True) -> List[ValueRecorderInfo]:
         return self.get_metrics(type_filter=lambda t: t == ValueRecorder, name_filter=name_filter,
-                                tag_filter=tag_filter)
+                                label_filter=label_filter)
 
-    def get_counter(self, name: str, tags: Optional[Dict[str, str]] = None) -> Optional[CounterInfo]:
-        m = self._find_metric(Counter, name, tags)
+    def get_counter(self, name: str, labels: Optional[Dict[str, str]] = None) -> Optional[CounterInfo]:
+        m = self._find_metric(Counter, name, labels)
         if m:
-            return CounterInfo(m.instrument.name, m.aggregator.checkpoint, self._get_tags(m))
+            return CounterInfo(m.instrument.name, m.aggregator.checkpoint, self._get_labels(m))
         else:
             return None
 
-    def get_up_down_counter(self, name: str, tags: Optional[Dict[str, str]] = None) -> Optional[CounterInfo]:
-        m = self._find_metric(UpDownCounter, name, tags)
+    def get_up_down_counter(self, name: str, labels: Optional[Dict[str, str]] = None) -> Optional[CounterInfo]:
+        m = self._find_metric(UpDownCounter, name, labels)
         if m:
-            return CounterInfo(m.instrument.name, m.aggregator.checkpoint, self._get_tags(m))
+            return CounterInfo(m.instrument.name, m.aggregator.checkpoint, self._get_labels(m))
         else:
             return None
-        
-    def get_value_recorder(self, name: str, tags: Optional[Dict[str, str]] = None) -> Optional[ValueRecorderInfo]:
-        m = self._find_metric(ValueRecorder, name, tags)
+
+    def get_value_recorder(self, name: str, labels: Optional[Dict[str, str]] = None) -> Optional[ValueRecorderInfo]:
+        m = self._find_metric(ValueRecorder, name, labels)
         if m:
             return ValueRecorderInfo(m.instrument.name,
                                      m.aggregator.checkpoint.min,
                                      m.aggregator.checkpoint.max,
                                      m.aggregator.checkpoint.sum,
                                      m.aggregator.checkpoint.count,
-                                     self._get_tags(m))
+                                     self._get_labels(m))
         else:
             return None
 
-    def get_gauge(self, name: str, tags: Optional[Dict[str, str]] = None) -> Optional[GaugeInfo]:
-        m = self._find_metric(ValueObserver, name, tags)
+    def get_gauge(self, name: str, labels: Optional[Dict[str, str]] = None) -> Optional[GaugeInfo]:
+        m = self._find_metric(ValueObserver, name, labels)
         if m:
             return GaugeInfo(f"{m.instrument.name}.{name}",
                              m.aggregator.checkpoint.min,
@@ -191,7 +191,7 @@ class TelemetryFixture(Telemetry):
                              m.aggregator.checkpoint.sum,
                              m.aggregator.checkpoint.last,
                              m.aggregator.checkpoint.count,
-                             self._get_tags(m))
+                             self._get_labels(m))
         else:
             return None
 
@@ -234,4 +234,3 @@ class JsonLogCaptureFormatter(JsonLogFormatter):
                 return
 
         pytest.fail(f"Assertion failed! Could not find expected text in logs: {text}")
-

@@ -1,17 +1,15 @@
 import enum
 import logging
-import threading
 import re
 from contextlib import contextmanager
 from threading import RLock
-from typing import Dict, Optional, List, Callable, Union, Sequence, Mapping, ContextManager
+from typing import Dict, Optional, Union, Sequence, Mapping, ContextManager
 
-import opentelemetry.sdk.metrics as metrics_sdk
+from telemetry.api import Keys
 import opentelemetry.sdk.trace as trace_sdk
 import opentelemetry.trace as trace_api
 from opentelemetry import context as context_api
-from opentelemetry.trace import SpanKind as OTSpanKind, Status
-from opentelemetry.trace.status import StatusCode
+from opentelemetry.trace import SpanKind as OTSpanKind
 
 AttributeValue = Union[
     str,
@@ -24,118 +22,6 @@ AttributeValue = Union[
     Sequence[Union[None, float]],
 ]
 Attributes = Optional[Mapping[str, AttributeValue]]
-
-
-class SpanListener:
-    def enabled(self, span: 'Span') -> bool:
-        return True
-
-    def on_start(self, span: 'Span'):
-        pass
-
-    def on_end(self, span: 'Span'):
-        pass
-
-
-class SpanTracker(trace_sdk.SpanProcessor):
-
-    def __init__(self):
-        from telemetry import Metrics, Tracer
-
-        self._tracer: Tracer = None
-        self._metrics: Metrics = None
-        self._span_processors = []
-        self._active_spans = {}
-        self._lock = threading.RLock()
-        self._span_listeners = []
-        super().__init__()
-
-    def set_telemetry(self, telemetry):
-        self._telemetry = telemetry
-
-    def add_span_listener(self, listener: SpanListener):
-        self._span_listeners.append(listener)
-
-    def remove_span_listener(self, listener: SpanListener):
-        self._span_listeners.remove(listener)
-
-    @property
-    def telemetry(self):
-        if self._telemetry is None:
-            raise Exception("Telemetry is not set!  You must initialize this instance with a call to set_telemetry!")
-        return self._telemetry
-
-    def get_span(self, span_id: int) -> trace_sdk.Span:
-        return self._active_spans.get(span_id)
-
-    def on_start(self, span: "trace_sdk.Span", parent_context: Optional[context_api.Context] = None) -> None:
-
-        with self._lock:
-            self._active_spans[span.get_span_context().span_id] = span
-
-        wrapped_span = Span(span)
-
-        # handles attribute propagation from outer spans to inner spans
-        # TODO: opentelemetry has a propagation mechanism, could that be used instead?
-        for s in self.telemetry.tracer.get_spans():
-            if s.attributes:
-                for key, value in s.attributes.items():
-                    if key not in span.attributes:
-                        wrapped_span.set_attribute(key, value)
-
-        for name, value in self.telemetry.environment.attributes.items():
-            wrapped_span.set_attribute(name, value)
-
-        for name, value in self.telemetry.environment.tags.items():
-            wrapped_span.set_tag(name, value)
-
-        instrumentor = span.instrumentation_info.name.replace('opentelemetry.instrumentation.', '')
-        wrapped_span.set_tag("trace.category", instrumentor)
-        wrapped_span.set_tag("trace.name", wrapped_span.qname)
-
-        super().on_start(span, parent_context)
-
-        for span_listener in self._span_listeners:
-            span_listener.on_start(wrapped_span)
-
-    def on_end(self, span: "trace_sdk.Span") -> None:
-        if span.status.is_unset:
-            if span.end_time is None:
-                raise Exception("End time not set on span!")
-            span.status = Status(status_code=StatusCode.OK)
-
-        wrapped_span = Span(span)
-        for span_listener in self._span_listeners:
-            span_listener.on_end(wrapped_span)
-
-        super().on_end(span)
-
-        elapsed_ms = int((span.end_time - span.start_time) / 1000000)
-
-
-        metric = self._telemetry.metrics._get_metric("trace", f"duration", int, metrics_sdk.ValueRecorder, unit="ms")
-
-        tags = wrapped_span.tags
-
-        metric.record(elapsed_ms, labels=tags)
-
-        if span.status.status_code == StatusCode.ERROR:
-            error_counter = self._telemetry.metrics._get_metric("trace", f"errors", int, metrics_sdk.Counter)
-            error_counter.add(1, labels=tags)
-            
-        with self._lock:
-            if span.get_span_context().span_id not in self._active_spans:
-                logging.warning(f"Existing span could not be cleaned up: {span.context.span_id}")
-
-            self._active_spans.pop(span.get_span_context().span_id)
-
-
-class SynchronousSpanTracker(SpanTracker, trace_sdk.SynchronousMultiSpanProcessor):
-    pass
-
-
-class ConcurrentSpanTracker(SpanTracker, trace_sdk.ConcurrentMultiSpanProcessor):
-    pass
 
 
 class SpanContext:
@@ -178,7 +64,7 @@ class SpanKind(enum.Enum):
     CONSUMER = 4
 
     @classmethod
-    def to_ot_span_kind(cls, span_kind: 'SpanKind') -> OTSpanKind:
+    def to_otel_span_kind(cls, span_kind: 'SpanKind') -> OTSpanKind:
         return OTSpanKind[span_kind.name]
 
 
@@ -190,12 +76,10 @@ class Span:
 
     def __init__(self, span: trace_sdk.Span):
         assert isinstance(span, trace_sdk._Span), f'unexpected Span type: {type(span)}'
-        self._instrumentor_name = span.instrumentation_info.name.replace('opentelemetry.instrumentation.', '')
         self._span = span
 
     @property
     def context(self) -> SpanContext:
-
         return SpanContext(
             str(self._span.context.trace_id),
             str(self._span.context.span_id),
@@ -216,12 +100,16 @@ class Span:
         return self._span.name
 
     @property
-    def qname(self) -> str:
-        return f"{self._instrumentor_name}.{self.name}"
+    def category(self) -> str:
+        return self.attributes.get('trace.category', self._span.instrumentation_info.name.replace('opentelemetry.instrumentation.', ''))
 
     @property
-    def instrumentor(self) -> str:
-        return self._instrumentor_name
+    def qname(self) -> str:
+        """
+        Returns the qualified name of the span {category}.{name}
+        :return: qualified name
+        """
+        return f"{self.category}.{self.name}"
 
     def set_attribute(self, name: str, value: AttributeValue) -> 'Span':
         # to boost performance, we track valid attribute names in this cache (shared across all instances).
@@ -229,9 +117,9 @@ class Span:
         # validation the next time we encounter it.
         if name not in self._attribute_key_cache:
             if not isinstance(name, str):
-                logging.warning(f"attribute/tag name must be a string! (name={name})")
+                logging.warning(f"attribute/label name must be a string! (name={name})")
             elif not self._ATTRIBUTE_NAME_PATTERN.fullmatch(name):
-                logging.warning(f"attribute/tag name must match the pattern: {self._ATTRIBUTE_NAME_PATTERN.pattern} (name={name})")
+                logging.warning(f"attribute/label name must match the pattern: {self._ATTRIBUTE_NAME_PATTERN.pattern} (name={name})")
             else:
                 if len(self._attribute_key_cache) > 1000:
                     logging.warning("Over 1000 attribute names have been cached. This should be investigated and the"
@@ -243,13 +131,16 @@ class Span:
             
         return self
 
-    def set_tag(self, name: str, value: str) -> 'Span':
+    def set_label(self, name: str, value: str) -> 'Span':
         if not isinstance(value, str):
-            logging.warning(f"Tag value for must be a string! (name={name}, value={value})")
+            logging.warning(f"label value for must be a string! (name={name}, value={value})")
         else:
             self.set_attribute(name, value)
-            self._add_attribute_tags(name)
-            
+            # mark this attribute as a label
+            label_keys = set(self._span.attributes.get(Keys.Attribute._LABEL_KEYS, ()))
+            label_keys.add(name)
+            self._span.set_attribute(Keys.Attribute._LABEL_KEYS, list(label_keys))
+
         return self
 
     def add_event(self, name: str, attributes: Attributes) -> 'Span':
@@ -261,97 +152,40 @@ class Span:
 
     @property
     def attributes(self) -> Attributes:
-        attributes = {}
-        for key, value in (self._span.attributes or {}).items():
-            attributes[key] = value
-
-        attributes['trace.id'] = str(self._span.context.trace_id)
-        attributes['trace.span_id'] = str(self._span.context.span_id)
-        attributes['trace.is_remote'] = self._span.context.is_remote
-
-        if not self._span.status.is_unset:
-            attributes['trace.status'] = self._span.status.status_code.name
-            attributes['trace.description'] = self._span.status.description
-            attributes['trace.span_kind'] = self._span.kind.name
-
-        return attributes
+        """
+        Return all (public) attributes
+        """
+        return {k: v for k, v in self._span.attributes.items() if not k.startswith('_')}
 
     @property
-    def tags(self) -> Dict[str, str]:
-        from telemetry.api import _TAG_ATTRIBUTES_KEY
-
-        tags = {}
-        attributes_as_tags = set(self.attributes.get(_TAG_ATTRIBUTES_KEY, ()))
-        attributes_as_tags.add('trace.status')
-        attributes_as_tags.add('trace.name')
-
-        for key in attributes_as_tags:
-            if key in self.attributes:
-                # tags values must be a string
-                tags[key] = str(self.attributes[key])
-
-        return tags
+    def labels(self) -> Dict[str, str]:
+        label_keys = set(self._span.attributes.get(Keys.Attribute._LABEL_KEYS, list()))
+        return {key: value for key, value in self.attributes.items() if key in Keys.Label._FORCE_LABELS or key in label_keys}
 
     def events(self):
         return self._span.events
 
-    def _add_attribute_tags(self, *names: str):
-        from telemetry.api import _TAG_ATTRIBUTES_KEY
-        tag_attributes = list(self.attributes.get(_TAG_ATTRIBUTES_KEY, ()))
-
-        for name in names:
-            if name not in tag_attributes:
-                tag_attributes.append(name)
-        self.set_attribute(_TAG_ATTRIBUTES_KEY, tag_attributes)
-
 
 class Tracer:
     def __init__(self, tracer_provider: trace_sdk.TracerProvider, name: str = "default"):
-        if not isinstance(tracer_provider._active_span_processor, SpanTracker):
-            raise Exception(f"Whoco telemetry requires that you use an instance of SynchronousSpanTracker or "
-                            f"ConcurrentSpanTracker for the TracerProvider.active_span_processor, but instead we got "
-                            f"an instance of '{tracer_provider._active_span_processor.__class__.__name__}'")
-
         self.name = name
         self._lock = RLock()
         self._tracer_provider = tracer_provider
-        self._span_tracker: SpanTracker = tracer_provider._active_span_processor
 
     def set_attribute(self, name: str, value: AttributeValue) -> 'Tracer':
         if self.has_active_span():
             self.current_span.set_attribute(name, value)
         return self
 
-    def set_tag(self, name: str, value: str) -> 'Tracer':
+    def set_label(self, name: str, value: str) -> 'Tracer':
         if self.has_active_span():
-            self.current_span.set_tag(name, value)
+            self.current_span.set_label(name, value)
         return self
 
     def add_event(self, name: str, attributes: Attributes) -> 'Tracer':
         if self.has_active_span():
             self.current_span.add_event(name, attributes)
         return self
-
-    def get_span(self, span_id: int) -> Optional[Span]:
-        return Span(self._span_tracker.get_span(span_id))
-
-    def get_spans(self) -> List[Span]:
-
-        def walk_spans(current: Optional[Span], visit: Callable[[Span], None]):
-            if not current:
-                return
-            visit(current)
-            parent = current._span.parent
-            if parent and parent.span_id != trace_api.INVALID_SPAN:
-                parent = self._span_tracker.get_span(parent.span_id)
-                if parent:
-                    walk_spans(Span(parent), visit)
-
-        spans = []
-
-        walk_spans(self.current_span, lambda span: spans.append(span))
-
-        return spans
 
     def has_active_span(self):
         return trace_api.get_current_span() != trace_api.INVALID_SPAN
@@ -363,12 +197,12 @@ class Tracer:
         return self.current_span.attributes or {}
 
     @property
-    def tags(self) -> Dict[str, str]:
+    def labels(self) -> Dict[str, str]:
         output = {}
         if not self.has_active_span():
             return output
 
-        return self.current_span.tags
+        return self.current_span.labels
 
     @property
     def current_span(self) -> Optional[Span]:
@@ -380,29 +214,41 @@ class Tracer:
     def span(self, category: str,
              name: str,
              attributes: Optional[Attributes] = None,
-             tags: Optional[Dict[str, str]] = None,
+             labels: Optional[Dict[str, str]] = None,
              kind: SpanKind = SpanKind.INTERNAL) -> ContextManager[Span]:
 
         from opentelemetry import trace
 
         @contextmanager
         def wrapper():
-            nonlocal name, attributes, kind, tags
+            nonlocal name, attributes, kind, labels
 
             if attributes is None:
                 attributes = {}
 
+            if labels is None:
+                labels = {}
 
             tracer = trace.get_tracer(category, tracer_provider=self._tracer_provider)
 
-            with tracer.start_as_current_span(name=name,
-                                              attributes=attributes,
-                                              kind=SpanKind.to_ot_span_kind(kind)) as span:
-                wrapped_span = Span(span)
-                if tags:
-                    for name, value in tags.items():
-                        wrapped_span.set_tag(name, value)
-                yield wrapped_span
+            try:
+
+                attributes['trace.category'] = category
+                with tracer.start_as_current_span(name=name, attributes=attributes, kind=SpanKind.to_otel_span_kind(kind)) as span:
+                    wrapped_span = Span(span)
+
+                    # add argument attributes
+                    for name, value in attributes.items():
+                        wrapped_span.set_attribute(name, value)
+
+                    # add argument labels
+                    for name, value in labels.items():
+                        wrapped_span.set_label(name, value)
+
+                    yield wrapped_span
+
+            finally:
+                pass
 
         return wrapper()
 

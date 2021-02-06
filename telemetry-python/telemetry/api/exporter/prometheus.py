@@ -67,6 +67,7 @@ import collections
 import logging
 import re
 import os
+import threading
 from typing import Iterable, Optional, Sequence, Union
 
 from opentelemetry.sdk.util.instrumentation import InstrumentationInfo
@@ -149,13 +150,16 @@ class CustomCollector:
     def __init__(self, instrumentor: InstrumentationInfo, prefix: str = ""):
         self.instrumentation_info = instrumentor
         self._prefix = prefix
-        self._metrics_to_export = collections.deque()
+        self._lock = threading.RLock()
+        self._metrics_to_export = []
         self._non_letters_nor_digits_re = re.compile(
             r"[^\w]", re.UNICODE | re.IGNORECASE
         )
 
     def add_metrics_data(self, export_records: Sequence[ExportRecord]) -> None:
-        self._metrics_to_export.append(export_records)
+        with self._lock:
+            self._metrics_to_export.clear()
+            self._metrics_to_export.extend(export_records)
 
     def collect(self):
         """Collect fetches the metrics from OpenTelemetry
@@ -164,11 +168,9 @@ class CustomCollector:
         for example when the HTTP endpoint is invoked by Prometheus.
         """
 
-        while self._metrics_to_export:
-            for export_record in self._metrics_to_export.popleft():
-                prometheus_metric = self._translate_to_prometheus(
-                    export_record
-                )
+        with self._lock:
+            for export_record in self._metrics_to_export:
+                prometheus_metric = self._translate_to_prometheus(export_record)
                 if prometheus_metric is not None:
                     yield prometheus_metric
 

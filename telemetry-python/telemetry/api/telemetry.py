@@ -9,11 +9,12 @@ from typing import Dict, Optional
 
 from opentelemetry import metrics as metrics_api, trace as trace_api
 from opentelemetry.sdk.metrics import MetricsExporter
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace import TracerProvider, SynchronousMultiSpanProcessor, SpanProcessor
 from opentelemetry.sdk.trace.export import SimpleExportSpanProcessor, SpanExporter
 
+from telemetry.api.listeners.span_metrics import SpanMetricsProcessor
 from telemetry.api.metrics import Metrics, Observer
-from telemetry.api.trace import Tracer, SpanKind, Span, SynchronousSpanTracker, SpanListener, Attributes, AttributeValue
+from telemetry.api.trace import Tracer, SpanKind, Span, Attributes
 
 
 def _repo_url():
@@ -26,31 +27,29 @@ def _repo_url():
 class Telemetry(abc.ABC):
     _instance: 'Telemetry' = None
 
-    def __init__(self, span_tracker=None, stateful=True):
-        from telemetry.api.otel.meter_provider import ManagedMeterProvider
-        from telemetry.api.helpers.environment import Environment
+    def __init__(self, span_processor=None, stateful: bool = True):
 
-        if span_tracker is None:
-            span_tracker = SynchronousSpanTracker()
+        if span_processor is None:
+            span_processor = SynchronousMultiSpanProcessor()
+        self.span_processor = span_processor
 
-        self.span_tracker = span_tracker
-        self.tracer_provider = TracerProvider(active_span_processor=self.span_tracker)
+        self.tracer_provider = TracerProvider(active_span_processor=span_processor)
         self.tracer = Tracer(self.tracer_provider)
-        self.meter_provider = ManagedMeterProvider(stateful=stateful)
-        self.metrics = Metrics(self, self.meter_provider)
-        self.span_tracker.set_telemetry(self)
-        self.environment = Environment()
+        self.metrics = Metrics(self, stateful=stateful)
+        self.span_processor.add_span_processor(SpanMetricsProcessor(self.metrics))
+
 
     def register(self):
         trace_api._TRACER_PROVIDER = None
         metrics_api._METER_PROVIDER = None
         trace_api.set_tracer_provider(self.tracer_provider)
-        metrics_api.set_meter_provider(self.meter_provider)
+        metrics_api.set_meter_provider(self.metrics.meter_provider)
 
     def initialize(self):
         from telemetry.api.helpers.environment import Environment
 
-        self.environment = Environment()
+        # mainly needed for testing where after we mock the environment, we need to refresh this class
+        Environment.initialize()
 
         logging.info(f"Initializing Telemetry API [exporters: ${os.environ.get('METRICS_EXPORTERS')}]")
 
@@ -75,47 +74,43 @@ class Telemetry(abc.ABC):
     def add_metrics_exporter(self, metrics_exporter: MetricsExporter,
                              interval: int = int(os.environ.get('METRICS_INTERVAL', '10'))):
         logging.info(f"Added metrics exporter: {metrics_exporter}")
-
         self.metrics.add_exporter(metrics_exporter, interval)
 
-    def add_span_listener(self, span_listener: SpanListener, *instrumentors: str):
+    def add_span_listener(self, span_listener: SpanProcessor, *instrumentors: str):
         from telemetry.api.listeners.span import InstrumentorSpanListener
         if len(instrumentors) > 0:
-            self.span_tracker.add_span_listener(InstrumentorSpanListener(span_listener, *instrumentors))
+            self.span_processor.add_span_processor(InstrumentorSpanListener(span_listener, *instrumentors))
         else:
-            self.span_tracker.add_span_listener(span_listener)
+            self.span_processor.add_span_processor(span_listener)
 
     def add_span_exporter(self, span_exporter: SpanExporter):
         logging.info(f"Added trace exporter: {span_exporter}")
-        self.span_tracker.add_span_processor(SimpleExportSpanProcessor(span_exporter))
+        self.span_processor.add_span_processor(SimpleExportSpanProcessor(span_exporter))
 
     def span(self, category: str, name: str,
              attributes: Optional[Attributes] = None,
-             tags: Optional[Dict[str, str]] = None,
+             labels: Optional[Dict[str, str]] = None,
              kind: SpanKind = SpanKind.INTERNAL) -> typing.ContextManager[Span]:
-        return self.tracer.span(category, name, attributes=attributes, tags=tags, kind=kind)
-
-    def active_spans(self) -> typing.List[Span]:
-        return self.tracer.get_spans()
+        return self.tracer.span(category, name, attributes=attributes, labels=labels, kind=kind)
 
     @property
     def current_span(self) -> Optional[Span]:
         return self.tracer.current_span
 
-    def counter(self, category: str, name: str, value: typing.Union[int, float] = 1, tags: Dict[str, str] = {},
+    def counter(self, category: str, name: str, value: typing.Union[int, float] = 1, labels: Dict[str, str] = {},
                 unit: str = "1",
                 description: Optional[str] = None):
-        self.metrics.counter(category, name, value=value, tags=tags, unit=unit, description=description)
+        self.metrics.counter(category, name, value=value, labels=labels, unit=unit, description=description)
 
-    def up_down_counter(self, category: str, name: str, value: typing.Union[int, float] = 1, tags: Dict[str, str] = {},
+    def up_down_counter(self, category: str, name: str, value: typing.Union[int, float] = 1, labels: Dict[str, str] = {},
                 unit: str = "1",
                 description: Optional[str] = None):
-        self.metrics.up_down_counter(category, name, value=value, tags=tags, unit=unit, description=description)
+        self.metrics.up_down_counter(category, name, value=value, labels=labels, unit=unit, description=description)
 
-    def record_value(self, category: str, name: str, value: typing.Union[int, float] = 1, tags: Dict[str, str] = {},
+    def record_value(self, category: str, name: str, value: typing.Union[int, float] = 1, labels: Dict[str, str] = {},
                      unit: str = "1",
                      description: Optional[str] = None):
-        self.metrics.record_value(category, name, value=value, tags=tags, unit=unit, description=description)
+        self.metrics.record_value(category, name, value=value, labels=labels, unit=unit, description=description)
 
     def gauge(self, category: str, name: str, callback: typing.Callable[[Observer], None],
               unit: str = "1",
@@ -128,29 +123,29 @@ class TelemetryApi:
     def __init__(self, category: str):
         self.category = category
 
-    def span(self, name: str, attributes: Optional[Attributes] = None, tags: Optional[Dict[str, str]] = None,
+    def span(self, name: str, attributes: Optional[Attributes] = None, labels: Optional[Dict[str, str]] = None,
              kind: SpanKind = SpanKind.INTERNAL) -> typing.ContextManager[Span]:
         from telemetry import tracer
         
         @contextmanager
         def wrapper():
-            with tracer.span(self.category, name, attributes=attributes, tags=tags, kind=kind) as span:
+            with tracer.span(self.category, name, attributes=attributes, labels=labels, kind=kind) as span:
                 yield span
 
         return wrapper()
 
-    def counter(self, name: str, value: int = 1, tags: Dict[str, str] = {}, unit: str = "1", description: Optional[str] = None):
+    def counter(self, name: str, value: int = 1, labels: Dict[str, str] = {}, unit: str = "1", description: Optional[str] = None):
         from telemetry import metrics
-        metrics.counter(self.category, name, value=value, tags=tags, unit=unit, description=description)
+        metrics.counter(self.category, name, value=value, labels=labels, unit=unit, description=description)
 
-    def up_down_counter(self, name: str, value: int = 1, tags: Dict[str, str] = {}, unit: str = "1",
+    def up_down_counter(self, name: str, value: int = 1, labels: Dict[str, str] = {}, unit: str = "1",
                 description: Optional[str] = None):
         from telemetry import metrics
-        metrics.up_down_counter(self.category, name, value=value, tags=tags, unit=unit, description=description)
+        metrics.up_down_counter(self.category, name, value=value, labels=labels, unit=unit, description=description)
 
-    def record_value(self, name: str, value: int = 1, tags: Dict[str, str] = {}, unit: str = "1", description: Optional[str] = None):
+    def record_value(self, name: str, value: int = 1, labels: Dict[str, str] = {}, unit: str = "1", description: Optional[str] = None):
         from telemetry import metrics
-        metrics.record_value(self.category, name, value=value, tags=tags, unit=unit, description=description)
+        metrics.record_value(self.category, name, value=value, labels=labels, unit=unit, description=description)
 
     def gauge(self, name: str, callback: typing.Callable[[Observer], None], unit: str = "1", description: Optional[str] = None):
         from telemetry import metrics
@@ -176,9 +171,9 @@ class timed:
     def __init__(self,
                  *args,
                  category: Optional[str] = None,
-                 tags: Optional[Dict[str, str]] = None,
+                 labels: Optional[Dict[str, str]] = None,
                  attributes: Optional[Attributes] = None,
-                 argument_tags: Optional[typing.Set[str]] = None,
+                 argument_labels: Optional[typing.Set[str]] = None,
                  argument_attributes: Optional[typing.Set[str]] = None):
 
         if len(args) == 1:
@@ -188,9 +183,9 @@ class timed:
 
         self.signature = None
         self.category = category
-        self.tags = tags
+        self.labels = labels
         self.attributes = attributes
-        self.argument_tags = argument_tags
+        self.argument_labels = argument_labels
         self.argument_attributes = argument_attributes
 
     def __set_name__(self, owner, name):
@@ -237,7 +232,7 @@ class timed:
 
             # check that this argument is in our allowed list of types
             if type(value) not in self.argument_types:
-                raise ValueError(f"Cannot set attribute/tag for argument '{name}' because it's type '{type(value)}' "
+                raise ValueError(f"Cannot set attribute/label for argument '{name}' because it's type '{type(value)}' "
                                  f"is not in the allowed list of types.  If you think this type should be allowed, "
                                  f"then please file a bug request at {_repo_url()}")
 
@@ -278,25 +273,25 @@ class timed:
 
         def wrapper(*call_args, **call_kwargs):
             with telemetry.tracer.span(self.category or self.get_category(self.function or fn), fn.__name__) as span:
-                if self.tags:
-                    for k, v in self.tags.items():
-                        span.set_tag(k, v)
+                if self.labels:
+                    for k, v in self.labels.items():
+                        span.set_label(k, v)
                 if self.attributes:
                     for k, v in self.attributes.items():
                         span.set_attribute(k, v)
 
                 # optimization that checks whether we should extract argument
-                if self.argument_attributes or self.argument_tags:
+                if self.argument_attributes or self.argument_labels:
                     # extract argument values
                     arg_values = self.get_arg_values(call_args, call_kwargs, fn)
-                    if self.argument_tags:
-                        for name in self.argument_tags:
+                    if self.argument_labels:
+                        for name in self.argument_labels:
                             if name not in arg_values:
                                 logging.warning(
                                     f"@timed call refers to an argument, {name}, that was not found in the signature"
-                                    f" for {fn.__name__}! This tag will not be added")
+                                    f" for {fn.__name__}! This label will not be added")
                             else:
-                                span.set_tag(name, arg_values[name])
+                                span.set_label(name, arg_values[name])
 
                     if self.argument_attributes:
                         for name in self.argument_attributes:

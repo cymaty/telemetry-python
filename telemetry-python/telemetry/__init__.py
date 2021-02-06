@@ -4,11 +4,10 @@ from typing import ContextManager
 import wrapt
 from decorator import contextmanager
 
-from telemetry.api import Telemetry, TelemetryMixin
+from telemetry.api import Telemetry, TelemetryMixin, Keys
 from telemetry.api.decorator import trace, extract_args
 from telemetry.api.metrics import Metrics
-from telemetry.api.trace import Tracer, SpanKind, Span, SynchronousSpanTracker, SpanTracker, \
-    ConcurrentSpanTracker, Attributes, AttributeValue
+from telemetry.api.trace import Tracer, SpanKind, Span, Attributes, AttributeValue
 
 telemetry: Telemetry = wrapt.ObjectProxy(Telemetry())
 tracer: Tracer = wrapt.ObjectProxy(telemetry.tracer)
@@ -16,8 +15,10 @@ metrics: Metrics = wrapt.ObjectProxy(telemetry.metrics)
 
 _telemetry_lock = RLock()
 
+
 def get_telemetry():
     return telemetry.__wrapped__
+
 
 def set_telemetry(instance: Telemetry):
     """
@@ -36,6 +37,7 @@ def set_telemetry(instance: Telemetry):
         tracer.__wrapped__ = instance.tracer
         metrics.__wrapped__ = instance.metrics
         instance.register()
+
 
 def with_telemetry(telemetry: Telemetry) -> ContextManager[Telemetry]:
     """
@@ -61,17 +63,13 @@ def with_telemetry(telemetry: Telemetry) -> ContextManager[Telemetry]:
 
 def initialize_json_logger():
     """
-    Registers the Json log formmater which with telemetry-aware logging that will include current attributes/tags in
+    Registers the Json log formmater which with telemetry-aware logging that will include current attributes/labels in
     each log message.
     :return: None
     """
     import logging
     from telemetry.api.logger.json import JsonLogFormatter
-    
+
     root_logger = logging.getLogger()
     for handler in root_logger.handlers:
         handler.setFormatter(JsonLogFormatter())
-
-
-
-
