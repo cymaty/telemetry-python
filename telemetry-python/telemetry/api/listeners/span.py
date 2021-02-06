@@ -1,22 +1,27 @@
 from typing import Optional
 
-from opentelemetry.context import Context
-from opentelemetry.sdk.trace import SpanProcessor, Span
 from opentelemetry import context as context_api
+from opentelemetry.sdk.trace import SpanProcessor, Span
 
-from telemetry import Keys
+from telemetry.api import Keys
 
 
 class InstrumentorSpanListener(SpanProcessor):
     """
-    A span listener that is only enabled for specific instrumentors
+    A span listener that wraps a SpanProcessor and enables it for the given instrumentors onlys
     """
     def __init__(self, delegate: SpanProcessor, *instrumentors: str):
-        self.instrumentors = instrumentors
+        self.instrumentors = set(instrumentors)
+
+        # for each instrumentor, add an alias of 'opentelemetry.instrumentation.{name}' so that we match 3rd-party instrumentors without the prefix
+        for i in instrumentors:
+            if not i.startswith('opentelemetry.instrumentation.'):
+                self.instrumentors.add(f'opentelemetry.instrumentation.{i}')
+
         self.delegate = delegate
 
     def enabled(self, span: Span) -> bool:
-        return span.instrumentation_info.name.replace('opentelemetry.instrumentation.', '') in self.instrumentors
+        return span.instrumentation_info.name in self.instrumentors
 
     def on_start(self, span: Span, parent_context: Optional[context_api.Context] = None):
         self.delegate.on_start(span)

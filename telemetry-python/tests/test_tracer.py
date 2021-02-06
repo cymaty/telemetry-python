@@ -220,13 +220,13 @@ class TestTracer:
     @responses.activate
     def test_third_party_instrumentor(self, telemetry: TelemetryFixture):
         import requests
-        from telemetry.api.listeners.span import labelAttributes, InstrumentorSpanListener
+        from telemetry.api.listeners.span import LabelAttributes, InstrumentorSpanListener
 
         RequestsInstrumentor().instrument()
 
         telemetry.initialize()
         telemetry.add_span_listener(InstrumentorSpanListener(
-            labelAttributes('component', 'http.status_code', 'http.method'), 'requests'))
+            LabelAttributes('component', 'http.status_code', 'http.method'), 'requests'))
 
         responses.add_passthru('http://localhost:1234/does_not_exist')
 
