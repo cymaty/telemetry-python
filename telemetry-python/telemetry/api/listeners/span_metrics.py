@@ -31,13 +31,14 @@ class SpanMetricsProcessor(SpanProcessor):
         if current_span and not isinstance(current_span, trace_api.DefaultSpan):
             # copy parent span's attributes into this span
             for key, value in current_span.attributes.items():
-                span.set_attribute(key, value)
+                if key not in telemetry.api._NO_PROPAGATE:
+                    span.set_attribute(key, value)
 
         # set/overwrite any span-specific attributes/labels
-        wrapped_span.set_attribute('trace.id', str(span.context.trace_id))
-        wrapped_span.set_attribute('trace.span_id', str(span.context.span_id))
-        wrapped_span.set_attribute('trace.is_remote', span.context.is_remote)
-        wrapped_span.set_label('trace.category', wrapped_span.category)
+        wrapped_span.set_attribute(telemetry.Keys.Attribute.TRACE_ID, str(span.context.trace_id))
+        wrapped_span.set_attribute(telemetry.Keys.Attribute.TRACE_SPAN_ID, str(span.context.span_id))
+        wrapped_span.set_attribute(telemetry.Keys.Attribute.TRACE_IS_REMOTE, span.context.is_remote)
+        wrapped_span.set_label(telemetry.Keys.Label.TRACE_CATEGORY, wrapped_span.category)
         wrapped_span.set_label(telemetry.Keys.Label.TRACE_NAME, wrapped_span.qname)
 
         for key, value in Environment.attributes.items():

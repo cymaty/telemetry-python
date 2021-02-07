@@ -74,7 +74,7 @@ class TestDecorator:
                                                                       Keys.Label.TRACE_STATUS: 'OK'}).count == 1
 
         log_record = telemetry.caplog.get_record(lambda l: l['message'] == 'global_method log')
-        assert log_record['attributes']['trace.id']
+        assert log_record['attributes']['trace_id']
 
     def test_decorator_default(self, telemetry: TelemetryFixture):
         example = DecoratorExample()

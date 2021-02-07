@@ -101,7 +101,7 @@ class Span:
 
     @property
     def category(self) -> str:
-        return self.attributes.get('trace.category', self._span.instrumentation_info.name.replace('opentelemetry.instrumentation.', ''))
+        return self.attributes.get(Keys.Label.TRACE_CATEGORY, self._span.instrumentation_info.name.replace('opentelemetry.instrumentation.', ''))
 
     @property
     def qname(self) -> str:
@@ -233,7 +233,7 @@ class Tracer:
 
             try:
 
-                attributes['trace.category'] = category
+                attributes[Keys.Label.TRACE_CATEGORY] = category
                 with tracer.start_as_current_span(name=name, attributes=attributes, kind=SpanKind.to_otel_span_kind(kind)) as span:
                     wrapped_span = Span(span)
 
