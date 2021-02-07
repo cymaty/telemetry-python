@@ -121,7 +121,7 @@ class PrometheusMetricsExporter(MetricsExporter):
     def _get_collector(self, instrumentor: InstrumentationInfo) -> 'CustomCollector':
         col = self.collectors.get(instrumentor)
         if not col:
-            logger.info(f"Registering collector for: {instrumentor}")
+            logger.debug(f"Registering collector for: {instrumentor}")
             col = CustomCollector(instrumentor, self.prefix)
             REGISTRY.register(col)
             self.collectors[instrumentor] = col
@@ -132,7 +132,7 @@ class PrometheusMetricsExporter(MetricsExporter):
         collector: Optional[CustomCollector] = None
         for rec in export_records:
             if collector is None or collector.instrumentation_info != rec.instrument.meter.instrumentation_info:
-                logging.info(f"Fetching collector for {rec.instrument.meter.instrumentation_info}")
+                logging.debug(f"Fetching collector for {rec.instrument.meter.instrumentation_info}")
                 collector = self._get_collector(rec.instrument.meter.instrumentation_info)
             collector.add_metrics_data(export_records)
 
