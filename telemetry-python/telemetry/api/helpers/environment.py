@@ -2,7 +2,7 @@ import os
 
 
 class Environment:
-    label_prefix = "METRICS_label_"
+    label_prefix = "METRICS_LABEL_"
     attrib_prefix = "METRICS_ATTRIBUTE_"
     label_variables = {
         'METRICS_APP_NAME': 'app.name',

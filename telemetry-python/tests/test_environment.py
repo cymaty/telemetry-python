@@ -8,8 +8,8 @@ from telemetry.testing import TelemetryFixture
 class TestEnvironment:
 
     def test_labelger(self, monkeypatch, telemetry: TelemetryFixture):
-        monkeypatch.setenv('METRICS_label_label1', 'label1_value')
-        monkeypatch.setenv('METRICS_label_label2', 'label2_value')
+        monkeypatch.setenv('METRICS_LABEL_label1', 'label1_value')
+        monkeypatch.setenv('METRICS_LABEL_label2', 'label2_value')
         monkeypatch.setenv('METRICS_ATTRIBUTE_ATTRIB1', 'attrib1_value')
         monkeypatch.setenv('METRICS_ATTRIBUTE_ATTRIB2', 'attrib2_value')
 
@@ -31,8 +31,8 @@ class TestEnvironment:
                                                                       'label2': 'label2_value'}).count == 1
 
     def test_labelger_no_override(self, monkeypatch, telemetry: TelemetryFixture):
-        monkeypatch.setenv('METRICS_label_label1', 'label1_value')
-        monkeypatch.setenv('METRICS_label_label2', 'label2_value')
+        monkeypatch.setenv('METRICS_LABEL_label1', 'label1_value')
+        monkeypatch.setenv('METRICS_LABEL_label2', 'label2_value')
         monkeypatch.setenv('METRICS_ATTRIBUTE_ATTRIB1', 'attrib1_value')
         monkeypatch.setenv('METRICS_ATTRIBUTE_ATTRIB2', 'attrib2_value')
 
@@ -74,8 +74,8 @@ class TestEnvironment:
         Environment._clear()
 
     def test_metrics_labelged_without_span(self, monkeypatch, telemetry: TelemetryFixture):
-        monkeypatch.setenv('METRICS_label_label1', 'label1_value')
-        monkeypatch.setenv('METRICS_label_label2', 'label2_value')
+        monkeypatch.setenv('METRICS_LABEL_label1', 'label1_value')
+        monkeypatch.setenv('METRICS_LABEL_label2', 'label2_value')
         monkeypatch.setenv('METRICS_ATTRIBUTE_ATTRIB1', 'attrib1_value')
         monkeypatch.setenv('METRICS_ATTRIBUTE_ATTRIB2', 'attrib2_value')
 
