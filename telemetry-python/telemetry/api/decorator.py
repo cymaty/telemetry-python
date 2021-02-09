@@ -7,9 +7,10 @@ from typing import Dict, Optional
 
 import wrapt
 
-from telemetry.api.trace import Attributes
+from telemetry.api import Attribute
+from telemetry.api.trace import AttributeValue
 
-Argumentlabelger = typing.Callable[[any], Optional[str]]
+ArgumentLabeler = typing.Callable[[any], Optional[str]]
 AttributeExtractor = typing.Callable[[Dict[str, any], typing.Callable[[any], any]], Dict[str, any]]
 
 def extract_args(*args: str) -> Optional[AttributeExtractor]:
@@ -76,12 +77,8 @@ class TracedInvocation:
         return arg_values
 
 
-    def wrap_span_attributes(self, fn, decorator_name: str, setter: typing.Callable[[str, any], None], static: Optional[dict], extractor: Optional[AttributeExtractor]):
+    def wrap_span_attributes(self, fn, decorator_name: str, setter: typing.Callable[[str, any], None], extractor: Optional[AttributeExtractor]):
         def wrapped(*args, **kwargs):
-            if static:
-                for name, value in static.items():
-                    setter(name, value)
-
             if extractor:
                 try:
                     extracted = extractor(self.resolve_arguments(*args, **kwargs), self.target)
@@ -103,15 +100,13 @@ class trace(object):
     def __init__(self,
                  *,
                  category: Optional[str] = None,
-                 labels: Optional[Dict[str, str]] = None,
-                 attributes: Optional[Attributes] = None,
+                 attributes: Optional[typing.Mapping[Attribute, AttributeValue]] = None,
                  attribute_extractor: Optional[AttributeExtractor] = None,
                  label_extractor: Optional[AttributeExtractor] = None
                  ):
 
         self.signature = None
         self.category = category
-        self.labels = labels or {}
         self.attributes = attributes or {}
         self.attribute_extractor = attribute_extractor
         self.label_extractor = label_extractor
@@ -137,10 +132,12 @@ class trace(object):
             if self.signature is None:
                 self.signature = inspect.signature(fn)
 
-            with telemetry.tracer.span(self._get_category(fn, instance), fn.__name__, labels=self.labels) as span:
+            with telemetry.tracer.span(self._get_category(fn, instance), fn.__name__) as span:
+                for a, value in self.attributes.items():
+                    span.set(a, value)
                 invocation = TracedInvocation(self, fn)
-                wrapped_attributes = invocation.wrap_span_attributes(fn, "@trace", span.set_attribute, self.attributes, self.attribute_extractor)
-                wrapped_labels = invocation.wrap_span_attributes(wrapped_attributes, "@trace", span.set_label, self.labels, self.label_extractor)
+                wrapped_attributes = invocation.wrap_span_attributes(fn, "@trace", span.set_attribute, self.attribute_extractor)
+                wrapped_labels = invocation.wrap_span_attributes(wrapped_attributes, "@trace", span.set_label, self.label_extractor)
                 return wrapped_labels(*args, **kwargs)
 
 

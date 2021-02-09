@@ -5,11 +5,11 @@ from contextlib import contextmanager
 from threading import RLock
 from typing import Dict, Optional, Union, Sequence, Mapping, ContextManager
 
-from telemetry.api import Keys
 import opentelemetry.sdk.trace as trace_sdk
 import opentelemetry.trace as trace_api
-from opentelemetry import context as context_api
 from opentelemetry.trace import SpanKind as OTSpanKind
+
+from telemetry.api import Attribute, _REGISTRY, Attributes, Label
 
 AttributeValue = Union[
     str,
@@ -21,8 +21,6 @@ AttributeValue = Union[
     Sequence[Union[None, int]],
     Sequence[Union[None, float]],
 ]
-Attributes = Optional[Mapping[str, AttributeValue]]
-
 
 class SpanContext:
     def __init__(self, trace_id: str, span_id: str, trace_state: Dict[str, str]):
@@ -101,7 +99,7 @@ class Span:
 
     @property
     def category(self) -> str:
-        return self.attributes.get(Keys.Label.TRACE_CATEGORY, self._span.instrumentation_info.name.replace('opentelemetry.instrumentation.', ''))
+        return self._span.attributes.get(Attributes.TRACE_CATEGORY.name, self._span.instrumentation_info.name.replace('opentelemetry.instrumentation.', ''))
 
     @property
     def qname(self) -> str:
@@ -111,10 +109,31 @@ class Span:
         """
         return f"{self.category}.{self.name}"
 
+    def set(self, attribute_or_label: Attribute, value: AttributeValue):
+        """
+        Set's an Attribute or Label value
+        :param attribute_or_label: instance of Attribute (or Label) to set
+        :param value: Attribute or Label value
+        :return: None
+        """
+        if attribute_or_label is None:
+            raise Exception(f"Attribute or Label cannot be None!")
+
+        if not isinstance(attribute_or_label, Attribute):
+            raise Exception(f"Expected Attribute or Label, but got a {attribute_or_label.__class__.__name__} ({attribute_or_label}) instead")
+
+        if attribute_or_label.is_label:
+            self.set_label(attribute_or_label.name, str(value))
+        else:
+            self.set_attribute(attribute_or_label.name, value)
+
     def set_attribute(self, name: str, value: AttributeValue) -> 'Span':
         # to boost performance, we track valid attribute names in this cache (shared across all instances).
         # The first time an attribute key is seen, we'll validate it and then add it to the cache so that we can skip
         # validation the next time we encounter it.
+        if not isinstance(name, str):
+            raise Exception("Attribute name must be a string!")
+
         if name not in self._attribute_key_cache:
             if not isinstance(name, str):
                 logging.warning(f"attribute/label name must be a string! (name={name})")
@@ -132,18 +151,21 @@ class Span:
         return self
 
     def set_label(self, name: str, value: str) -> 'Span':
+        if not isinstance(name, str):
+            raise Exception("label name must be a string!")
+
         if not isinstance(value, str):
             logging.warning(f"label value for must be a string! (name={name}, value={value})")
         else:
             self.set_attribute(name, value)
             # mark this attribute as a label
-            label_keys = set(self._span.attributes.get(Keys.Attribute._LABEL_KEYS, ()))
+            label_keys = set(self._span.attributes.get(Attributes._LABEL_KEYS.name, ()))
             label_keys.add(name)
-            self._span.set_attribute(Keys.Attribute._LABEL_KEYS, list(label_keys))
+            self._span.set_attribute(Attributes._LABEL_KEYS.name, list(label_keys))
 
         return self
 
-    def add_event(self, name: str, attributes: Attributes) -> 'Span':
+    def add_event(self, name: str, attributes: Mapping[str, AttributeValue]) -> 'Span':
         self._span.add_event(name, attributes)
         return self
 
@@ -151,7 +173,7 @@ class Span:
         self._span.end()
 
     @property
-    def attributes(self) -> Attributes:
+    def attributes(self) -> Mapping[str, AttributeValue]:
         """
         Return all (public) attributes
         """
@@ -159,8 +181,8 @@ class Span:
 
     @property
     def labels(self) -> Dict[str, str]:
-        label_keys = set(self._span.attributes.get(Keys.Attribute._LABEL_KEYS, list()))
-        return {key: value for key, value in self.attributes.items() if key in Keys.Label._FORCE_LABELS or key in label_keys}
+        label_keys = set(self._span.attributes.get(Attributes._LABEL_KEYS.name, list()))
+        return {key: value for key, value in self.attributes.items() if key in label_keys or _REGISTRY.is_label(key)}
 
     def events(self):
         return self._span.events
@@ -182,7 +204,7 @@ class Tracer:
             self.current_span.set_label(name, value)
         return self
 
-    def add_event(self, name: str, attributes: Attributes) -> 'Tracer':
+    def add_event(self, name: str, attributes: Mapping[str, AttributeValue]) -> 'Tracer':
         if self.has_active_span():
             self.current_span.add_event(name, attributes)
         return self
@@ -191,7 +213,7 @@ class Tracer:
         return trace_api.get_current_span() != trace_api.INVALID_SPAN
 
     @property
-    def attributes(self) -> Attributes:
+    def attributes(self) -> Mapping[str, AttributeValue]:
         if not self.has_active_span():
             return {}
         return self.current_span.attributes or {}
@@ -213,37 +235,35 @@ class Tracer:
 
     def span(self, category: str,
              name: str,
-             attributes: Optional[Attributes] = None,
-             labels: Optional[Dict[str, str]] = None,
+             attributes: Optional[Mapping[Attribute, AttributeValue]] = None,
              kind: SpanKind = SpanKind.INTERNAL) -> ContextManager[Span]:
 
         from opentelemetry import trace
 
         @contextmanager
         def wrapper():
-            nonlocal name, attributes, kind, labels
+            nonlocal name, attributes, kind
 
-            if attributes is None:
+            if not attributes:
                 attributes = {}
-
-            if labels is None:
-                labels = {}
 
             tracer = trace.get_tracer(category, tracer_provider=self._tracer_provider)
 
             try:
+                attributes_copy = {}
+                attributes_copy[Attributes.TRACE_CATEGORY.name] = category
+                for key, value in attributes.items():
+                    if isinstance(key, str):
+                        attributes_copy[key] = value
+                    else:
+                        attributes_copy[key.name] = value
 
-                attributes[Keys.Label.TRACE_CATEGORY] = category
-                with tracer.start_as_current_span(name=name, attributes=attributes, kind=SpanKind.to_otel_span_kind(kind)) as span:
+                with tracer.start_as_current_span(name=name, attributes=attributes_copy, kind=SpanKind.to_otel_span_kind(kind)) as span:
                     wrapped_span = Span(span)
 
-                    # add argument attributes
-                    for name, value in attributes.items():
-                        wrapped_span.set_attribute(name, value)
-
-                    # add argument labels
-                    for name, value in labels.items():
-                        wrapped_span.set_label(name, value)
+                    # set passed attributes
+                    for a, value in attributes.items():
+                        wrapped_span.set(a, value)
 
                     yield wrapped_span
 

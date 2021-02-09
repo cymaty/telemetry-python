@@ -12,9 +12,10 @@ from opentelemetry.sdk.metrics import MetricsExporter
 from opentelemetry.sdk.trace import TracerProvider, SynchronousMultiSpanProcessor, SpanProcessor
 from opentelemetry.sdk.trace.export import SimpleExportSpanProcessor, SpanExporter
 
+from telemetry.api import Attribute
 from telemetry.api.listeners.span_metrics import SpanMetricsProcessor
 from telemetry.api.metrics import Metrics, Observer
-from telemetry.api.trace import Tracer, SpanKind, Span, Attributes
+from telemetry.api.trace import Tracer, SpanKind, Span, AttributeValue
 
 
 def _repo_url():
@@ -88,10 +89,9 @@ class Telemetry(abc.ABC):
         self.span_processor.add_span_processor(SimpleExportSpanProcessor(span_exporter))
 
     def span(self, category: str, name: str,
-             attributes: Optional[Attributes] = None,
-             labels: Optional[Dict[str, str]] = None,
+             attributes: Optional[typing.Mapping[typing.Union[Attribute, str], AttributeValue]] = None,
              kind: SpanKind = SpanKind.INTERNAL) -> typing.ContextManager[Span]:
-        return self.tracer.span(category, name, attributes=attributes, labels=labels, kind=kind)
+        return self.tracer.span(category, name, attributes=attributes, kind=kind)
 
     @property
     def current_span(self) -> Optional[Span]:
@@ -123,13 +123,13 @@ class TelemetryApi:
     def __init__(self, category: str):
         self.category = category
 
-    def span(self, name: str, attributes: Optional[Attributes] = None, labels: Optional[Dict[str, str]] = None,
+    def span(self, name: str, attributes: Optional[typing.Mapping[Attribute, AttributeValue]] = None, labels: Optional[Dict[str, str]] = None,
              kind: SpanKind = SpanKind.INTERNAL) -> typing.ContextManager[Span]:
         from telemetry import tracer
         
         @contextmanager
         def wrapper():
-            with tracer.span(self.category, name, attributes=attributes, labels=labels, kind=kind) as span:
+            with tracer.span(self.category, name, attributes=attributes, kind=kind) as span:
                 yield span
 
         return wrapper()
@@ -172,7 +172,7 @@ class timed:
                  *args,
                  category: Optional[str] = None,
                  labels: Optional[Dict[str, str]] = None,
-                 attributes: Optional[Attributes] = None,
+                 attributes: Optional[typing.Mapping[str, AttributeValue]] = None,
                  argument_labels: Optional[typing.Set[str]] = None,
                  argument_attributes: Optional[typing.Set[str]] = None):
 

@@ -5,8 +5,9 @@ from typing import Optional
 
 import pytest
 
-from telemetry import TelemetryMixin, trace, extract_args, Keys
+from telemetry import TelemetryMixin, trace, extract_args, Attributes
 from telemetry.testing import TelemetryFixture
+from tests.attributes import TestAttributes
 from tests.example import global_method
 
 
@@ -24,8 +25,7 @@ class DecoratorExample(TelemetryMixin):
         logging.info(f'method_trace_default log')
 
     @trace(category='custom_category',
-           labels={'label1': 't1'},
-           attributes={'attribute1': 'a1'},
+           attributes={TestAttributes.ATTRIB1: 'a1', TestAttributes.LABEL1: 't1'},
            label_extractor=extract_args("arg1"),
            attribute_extractor=extract_args("arg2"))
     def method_trace_custom(self, arg1: str, arg2: int = 10, arg3: Optional[ComplexValue] = None):
@@ -34,8 +34,7 @@ class DecoratorExample(TelemetryMixin):
         logging.info(f'method_trace_custom log')
 
     @trace(category='custom_category',
-           labels={'label1': 't1'},
-           attributes={'attribute1': 'a1'},
+           attributes={TestAttributes.ATTRIB1: 'a1', TestAttributes.LABEL1: 't1'},
            label_extractor=extract_args("arg4"),  # arg4 is not a valid argument
            attribute_extractor=extract_args("arg2"))
     def method_invalid_argument_label(self, arg1: str, arg2: int = 10):
@@ -69,12 +68,12 @@ class TestDecorator:
 
         telemetry.collect()
 
-        assert telemetry.get_value_recorder('trace.duration', labels={Keys.Label.TRACE_CATEGORY: 'tests.example',
-                                                                      Keys.Label.TRACE_NAME: 'tests.example.global_method',
-                                                                      Keys.Label.TRACE_STATUS: 'OK'}).count == 1
+        assert telemetry.get_value_recorder('trace.duration', labels={Attributes.TRACE_CATEGORY.name: 'tests.example',
+                                                                      Attributes.TRACE_NAME.name: 'tests.example.global_method',
+                                                                      Attributes.TRACE_STATUS.name: 'OK'}).count == 1
 
         log_record = telemetry.caplog.get_record(lambda l: l['message'] == 'global_method log')
-        assert log_record['attributes']['trace_id']
+        assert log_record['attributes']['trace.id']
 
     def test_decorator_default(self, telemetry: TelemetryFixture):
         example = DecoratorExample()
@@ -84,9 +83,9 @@ class TestDecorator:
 
         assert example.telemetry_category == 'tests.test_decorator.DecoratorExample'
         assert telemetry.get_value_recorder('trace.duration', labels={
-            Keys.Label.TRACE_CATEGORY: 'tests.test_decorator.DecoratorExample',
-            Keys.Label.TRACE_NAME: 'tests.test_decorator.DecoratorExample.method_trace_default',
-            Keys.Label.TRACE_STATUS: 'OK'}).count == 1
+            Attributes.TRACE_CATEGORY.name: 'tests.test_decorator.DecoratorExample',
+            Attributes.TRACE_NAME.name: 'tests.test_decorator.DecoratorExample.method_trace_default',
+            Attributes.TRACE_STATUS.name: 'OK'}).count == 1
 
     def test_decorator_custom(self, telemetry: TelemetryFixture):
         example = DecoratorExample()
@@ -98,9 +97,9 @@ class TestDecorator:
         assert telemetry.get_value_recorder(name='trace.duration',
                                             labels={'arg1': 'arg1_value',
                                                     'label1': 't1',
-                                                    Keys.Label.TRACE_CATEGORY: 'custom_category',
-                                                    Keys.Label.TRACE_NAME: 'custom_category.method_trace_custom',
-                                                    Keys.Label.TRACE_STATUS: 'OK'}).count == 1
+                                                    Attributes.TRACE_CATEGORY.name: 'custom_category',
+                                                    Attributes.TRACE_NAME.name: 'custom_category.method_trace_custom',
+                                                    Attributes.TRACE_STATUS.name: 'OK'}).count == 1
 
     def test_decorator_argument_labelging(self, telemetry: TelemetryFixture, caplog):
         telemetry.enable_log_record_capture(caplog)
@@ -112,9 +111,9 @@ class TestDecorator:
         telemetry.collect()
 
         assert telemetry.get_value_recorder(name='trace.duration',
-                                            labels={'arg1': 'foo', Keys.Label.TRACE_CATEGORY: 'custom_category',
-                                                    Keys.Label.TRACE_NAME: 'custom_category.method_trace_custom',
-                                                    Keys.Label.TRACE_STATUS: 'OK', 'label1': 't1'}).count == 2
+                                            labels={'arg1': 'foo', Attributes.TRACE_CATEGORY.name: 'custom_category',
+                                                    Attributes.TRACE_NAME.name: 'custom_category.method_trace_custom',
+                                                    Attributes.TRACE_STATUS.name: 'OK', 'label1': 't1'}).count == 2
 
         rec = telemetry.caplog.get_record(
             lambda rec: rec['message'] == 'method_trace_custom log' and rec['attributes']['arg2'] == 10)
@@ -139,14 +138,14 @@ class TestDecorator:
         telemetry.collect()
 
         assert telemetry.get_value_recorder(name='trace.duration',
-                                            labels={'arg1': 'foo', 'label1': 't1', Keys.Label.TRACE_STATUS: 'OK',
-                                                    Keys.Label.TRACE_CATEGORY: 'custom_category',
-                                                    Keys.Label.TRACE_NAME: 'custom_category.method_trace_custom'}).count == 1
+                                            labels={'arg1': 'foo', 'label1': 't1', Attributes.TRACE_STATUS.name: 'OK',
+                                                    Attributes.TRACE_CATEGORY.name: 'custom_category',
+                                                    Attributes.TRACE_NAME.name: 'custom_category.method_trace_custom'}).count == 1
 
         rec = telemetry.caplog.get_record(lambda rec: rec['message'] == 'method_trace_custom log')
 
         assert rec['attributes']['label1'] == 't1'
-        assert rec['attributes']['attribute1'] == 'a1'
+        assert rec['attributes']['attrib1'] == 'a1'
         assert rec['attributes']['arg1'] == 'foo'
 
     def test_decorator_complex_argument_label(self, telemetry: TelemetryFixture):
@@ -156,9 +155,9 @@ class TestDecorator:
         telemetry.collect()
 
         assert telemetry.get_value_recorder(name='trace.duration',
-                                            labels={Keys.Label.TRACE_STATUS: 'OK',
-                                                    Keys.Label.TRACE_CATEGORY: 'tests.test_decorator.DecoratorExample',
-                                                    Keys.Label.TRACE_NAME: 'tests.test_decorator.DecoratorExample.method_complex_argument_label'}).count == 1
+                                            labels={Attributes.TRACE_STATUS.name: 'OK',
+                                                    Attributes.TRACE_CATEGORY.name: 'tests.test_decorator.DecoratorExample',
+                                                    Attributes.TRACE_NAME.name: 'tests.test_decorator.DecoratorExample.method_complex_argument_label'}).count == 1
 
     def test_decorator_invalid_argument_label(self, telemetry: TelemetryFixture, caplog):
         telemetry.enable_log_record_capture(caplog)
@@ -181,9 +180,9 @@ class TestDecorator:
         telemetry.collect()
 
         assert telemetry.get_value_recorder(name='trace.duration',
-                                            labels={Keys.Label.TRACE_STATUS: 'OK',
-                                                    Keys.Label.TRACE_CATEGORY: 'tests.test_decorator.DecoratorExample',
-                                                    Keys.Label.TRACE_NAME: 'tests.test_decorator.DecoratorExample.method_complex_argument_label'}).count == 1
+                                            labels={Attributes.TRACE_STATUS.name: 'OK',
+                                                    Attributes.TRACE_CATEGORY.name: 'tests.test_decorator.DecoratorExample',
+                                                    Attributes.TRACE_NAME.name: 'tests.test_decorator.DecoratorExample.method_complex_argument_label'}).count == 1
 
     def test_decorator_local_def(self, telemetry: TelemetryFixture):
         @trace(label_extractor=extract_args("arg"))
@@ -196,9 +195,9 @@ class TestDecorator:
         telemetry.collect()
 
         assert telemetry.get_value_recorder('trace.duration', labels={
-            Keys.Label.TRACE_CATEGORY: 'tests.test_decorator',
-            Keys.Label.TRACE_NAME: 'tests.test_decorator.foo',
-            Keys.Label.TRACE_STATUS: 'OK',
+            Attributes.TRACE_CATEGORY.name: 'tests.test_decorator',
+            Attributes.TRACE_NAME.name: 'tests.test_decorator.foo',
+            Attributes.TRACE_STATUS.name: 'OK',
             'arg': 'arg1'}).count == 1
 
     def test_decorator_throws_exception_on_invalid_usage(self, telemetry: TelemetryFixture):
@@ -223,9 +222,9 @@ class TestDecorator:
     #                                         labels={'label1': 't1',
     #                                               'label_inner': 'label_inner',
     #                                               'arg1': 'foo_inner',
-    #                                               Keys.Label.TRACE_STATUS: 'OK',
-    #                                               Keys.Label.TRACE_CATEGORY: 'tests.test_decorator.DecoratorExample',
-    #                                               Keys.Label.TRACE_NAME: 'tests.test_decorator.DecoratorExample.method_outer'}).count == 1
+    #                                               Attributes.TRACE_STATUS.name: 'OK',
+    #                                               Attributes.TRACE_CATEGORY.name: 'tests.test_decorator.DecoratorExample',
+    #                                               Attributes.TRACE_NAME.name: 'tests.test_decorator.DecoratorExample.method_outer'}).count == 1
     #
     #
     #     rec = telemetry.caplog.get_record(lambda rec: rec['message'] == 'method_outer log')

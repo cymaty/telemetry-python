@@ -7,6 +7,7 @@ from opentelemetry.sdk.trace import Span, SpanProcessor
 from opentelemetry.trace.status import StatusCode
 
 import telemetry
+from telemetry.api import Attributes
 from telemetry.api.helpers.environment import Environment
 
 
@@ -31,15 +32,15 @@ class SpanMetricsProcessor(SpanProcessor):
         if current_span and not isinstance(current_span, trace_api.DefaultSpan):
             # copy parent span's attributes into this span
             for key, value in current_span.attributes.items():
-                if key not in telemetry.api._NO_PROPAGATE:
+                if Attributes.propagte(key):
                     span.set_attribute(key, value)
 
         # set/overwrite any span-specific attributes/labels
-        wrapped_span.set_attribute(telemetry.Keys.Attribute.TRACE_ID, str(span.context.trace_id))
-        wrapped_span.set_attribute(telemetry.Keys.Attribute.TRACE_SPAN_ID, str(span.context.span_id))
-        wrapped_span.set_attribute(telemetry.Keys.Attribute.TRACE_IS_REMOTE, span.context.is_remote)
-        wrapped_span.set_label(telemetry.Keys.Label.TRACE_CATEGORY, wrapped_span.category)
-        wrapped_span.set_label(telemetry.Keys.Label.TRACE_NAME, wrapped_span.qname)
+        wrapped_span.set(Attributes.TRACE_ID, str(span.context.trace_id))
+        wrapped_span.set(Attributes.TRACE_SPAN_ID, str(span.context.span_id))
+        wrapped_span.set(Attributes.TRACE_IS_REMOTE, span.context.is_remote)
+        wrapped_span.set(Attributes.TRACE_CATEGORY, wrapped_span.category)
+        wrapped_span.set(Attributes.TRACE_NAME, wrapped_span.qname)
 
         for key, value in Environment.attributes.items():
             wrapped_span.set_attribute(key, value)
@@ -50,8 +51,6 @@ class SpanMetricsProcessor(SpanProcessor):
         super().on_start(span, parent_context)
 
     def on_end(self, span: "Span") -> None:
-        from telemetry import Keys
-
         elapsed_ms = int((span.end_time - span.start_time) / 1000000)
 
         metric = self.metrics._get_metric("trace", f"duration", int, ValueRecorder, unit="ms")
@@ -63,7 +62,7 @@ class SpanMetricsProcessor(SpanProcessor):
         if not span.status.is_ok:
             status = "ERROR"
 
-        labels[Keys.Label.TRACE_STATUS] = status
+        labels[Attributes.TRACE_STATUS.name] = status
 
         metric.record(elapsed_ms, labels=labels)
 

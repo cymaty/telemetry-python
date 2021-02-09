@@ -3,8 +3,6 @@ from typing import Optional
 from opentelemetry import context as context_api
 from opentelemetry.sdk.trace import SpanProcessor, Span
 
-from telemetry.api import Keys
-
 
 class InstrumentorSpanListener(SpanProcessor):
     """
@@ -38,9 +36,11 @@ class LabelAttributes(SpanProcessor):
         self.attributes = attributes
 
     def on_start(self, span: "trace_sdk.Span", parent_context: Optional[context_api.Context] = None) -> None:
-        label_keys = set(span.attributes.get(Keys.Attribute._LABEL_KEYS, ()))
+        from telemetry import Attributes
+
+        label_keys = set(span.attributes.get(Attributes._LABEL_KEYS.name, ()))
         label_keys.update(self.attributes)
-        span.set_attribute(Keys.Attribute._LABEL_KEYS, list(label_keys))
+        span.set_attribute(Attributes._LABEL_KEYS.name, list(label_keys))
 
 
 

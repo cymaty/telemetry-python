@@ -1,6 +1,6 @@
 from dataclasses import field, dataclass
 from logging import LogRecord
-from typing import Callable, Iterator, Dict, Optional, List, Type, Union
+from typing import Callable, Iterator, Dict, Optional, List, Type, Union, Mapping
 
 import pytest
 from _pytest.logging import LogCaptureFixture
@@ -11,7 +11,7 @@ from opentelemetry.sdk.metrics.export.in_memory_metrics_exporter import InMemory
 from telemetry import Telemetry, Span
 from telemetry.api.exporter.memory import InMemorySpanExporter
 from telemetry.api.logger.json import JsonLogFormatter
-from telemetry.api.trace import Attributes
+from telemetry.api.trace import AttributeValue
 
 
 @dataclass
@@ -139,7 +139,7 @@ class TelemetryFixture(Telemetry):
         return self.get_metrics(type_filter=lambda t: t == Counter, name_filter=name_filter, label_filter=label_filter)
 
     def get_finished_spans(self, name_filter: Callable[[str], bool] = lambda v: True,
-                           attribute_filter: Callable[[Attributes], bool] = lambda v: True,
+                           attribute_filter: Callable[[Optional[Mapping[str, AttributeValue]]], bool] = lambda v: True,
                            label_filter: Callable[[Dict[str, str]], bool] = lambda v: True) -> List[Span]:
         spans = []
 

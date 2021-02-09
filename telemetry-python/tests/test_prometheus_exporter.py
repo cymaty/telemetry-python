@@ -4,6 +4,7 @@ import time
 import urllib3
 
 from telemetry.testing.pytest_plugin import stateful
+from tests.attributes import TestAttributes
 
 
 class TestPrometheusExporter:
@@ -19,7 +20,7 @@ class TestPrometheusExporter:
 
         http = urllib3.PoolManager()
 
-        with telemetry.span("category1", "span1", labels={"label1": "label1"}, attributes={"attrib1": "attrib1"}) as span:
+        with telemetry.span("category1", "span1", attributes={TestAttributes.ATTRIB1: "attrib1", TestAttributes.LABEL1: 'label1'}) as span:
             time.sleep(.5)
 
         # wait for Prometheus collection interval to pass (METRICS_INTERVAL)
@@ -46,7 +47,7 @@ class TestPrometheusExporter:
         assert fetch_metric('test_prefix_trace_duration_count') == 1.0
         assert fetch_metric('test_prefix_trace_duration_sum') >= 500
 
-        with telemetry.span("category1", "span1", labels={"label1": "label1"}, attributes={"attrib1": "attrib1"}) as span:
+        with telemetry.span("category1", "span1", attributes={TestAttributes.ATTRIB1: "attrib1", TestAttributes.LABEL1: 'label1'}) as span:
             time.sleep(.5)
 
         # wait for Prometheus collection interval to pass (METRICS_INTERVAL)
