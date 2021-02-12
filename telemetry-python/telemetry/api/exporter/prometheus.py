@@ -76,9 +76,10 @@ from prometheus_client.core import (
     CounterMetricFamily,
     SummaryMetricFamily,
     UnknownMetricFamily,
+    GaugeMetricFamily
 )
 
-from opentelemetry.metrics import Counter, ValueRecorder
+from opentelemetry.metrics import Counter, ValueRecorder, Observer
 from opentelemetry.sdk.metrics.export import (
     ExportRecord,
     MetricsExporter,
@@ -194,6 +195,13 @@ class CustomCollector:
             )
             prometheus_metric.add_metric(
                 labels=label_values, value=export_record.aggregator.checkpoint
+            )
+        if isinstance(export_record.instrument, Observer):
+            prometheus_metric = GaugeMetricFamily(
+                name=metric_name, documentation=description, labels=label_keys
+            )
+            prometheus_metric.add_metric(
+                labels=label_values, value=export_record.aggregator.checkpoint.last
             )
         # TODO: Add support for histograms when supported in OT
         elif isinstance(export_record.instrument, ValueRecorder):

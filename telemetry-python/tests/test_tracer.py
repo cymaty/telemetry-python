@@ -105,7 +105,7 @@ class TestTracer:
                                              Attributes.TRACE_CATEGORY.name: 'tests.example.ExampleClass',
                                              Attributes.TRACE_NAME.name: 'tests.example.ExampleClass.method2'}).value == 1
 
-        assert len(telemetry.get_counters()) == 8
+        assert len(telemetry.get_counters()) == 7
 
         # method1 (direct)
         assert telemetry.get_value_recorder('trace.duration',
@@ -165,10 +165,6 @@ class TestTracer:
                                             labels={Attributes.TRACE_STATUS.name: 'ERROR',
                                                     Attributes.TRACE_CATEGORY.name: 'tests.example.ExampleClass',
                                                     Attributes.TRACE_NAME.name: 'tests.example.ExampleClass.error'}).count == 1
-
-        assert telemetry.get_counter('trace.errors', labels={Attributes.TRACE_STATUS.name: 'ERROR',
-                                                             Attributes.TRACE_CATEGORY.name: 'tests.example.ExampleClass',
-                                                             Attributes.TRACE_NAME.name: 'tests.example.ExampleClass.error'}).value == 1
 
         assert len(telemetry.get_value_recorders()) == 4
 

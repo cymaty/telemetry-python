@@ -4,18 +4,30 @@ from typing import Optional, Dict, Type, TypeVar, Callable, Union
 import opentelemetry.sdk.metrics as metrics_sdk
 from opentelemetry.metrics import Metric, ValueT
 
+from telemetry.api import Label
 from telemetry.api.exporter.environment import EnvironmentMetricsDecorator
 from telemetry.api.otel.meter_provider import ManagedMeterProvider
 
 T = TypeVar("T")
 
 
+def _convert_labels(labels: Dict[Union[Label, str], str]):
+    if labels is None:
+        return {}
+
+    converted = {}
+    for label, value in labels.items():
+        if isinstance(label, Label):
+            label = label.name
+        converted[label] = value
+    return converted
+
 class Observer:
     def __init__(self, delegate: metrics_sdk.Observer):
         self._delegate = delegate
 
-    def observe(self, value: float, labels: Dict[str, str]):
-        self._delegate.observe(float(value), labels)
+    def observe(self, value: float, labels: Dict[Union[Label, str], str]):
+        self._delegate.observe(float(value), _convert_labels(labels))
 
 
 class Metrics:
@@ -53,11 +65,11 @@ class Metrics:
             return
         else:
             if observer_type == metrics_sdk.ValueObserver:
-                observer = self._meter.register_valueobserver(callback, fqn, description, unit, value_type)
+                observer = self._meter.register_valueobserver(callback, fqn, description or '', unit, value_type)
             elif observer_type == metrics_sdk.UpDownSumObserver:
-                observer = self._meter.register_updownsumobserver(callback, fqn, description, unit, value_type)
+                observer = self._meter.register_updownsumobserver(callback, fqn, description or '', unit, value_type)
             elif observer_type == metrics_sdk.SumObserver:
-                observer = self._meter.register_sumobserver(callback, fqn, description, unit, value_type)
+                observer = self._meter.register_sumobserver(callback, fqn, description or '', unit, value_type)
             else:
                 raise Exception(f"Observer type not implemented: {observer_type}")
 
@@ -93,25 +105,25 @@ class Metrics:
         wrapped = EnvironmentMetricsDecorator(exporter)
         self.meter_provider.add_exporter(wrapped, interval)
 
-    def counter(self, category: str, name: str, value: Union[int, float] = 1, labels: Dict[str, str] = {},
+    def counter(self, category: str, name: str, value: Union[int, float] = 1, labels: Dict[Union[Label, str], str] = {},
                 unit: str = "1",
                 description: Optional[str] = None):
         self._get_metric(category, name, type(value), metrics_sdk.Counter, unit, description)\
-            .add(value, self._merge_labels(labels))
+            .add(value, self._merge_labels(_convert_labels(labels)))
 
-    def up_down_counter(self, category: str, name: str, value: Union[int, float] = 1, labels: Dict[str, str] = {},
+    def up_down_counter(self, category: str, name: str, value: Union[int, float] = 1, labels: Dict[Union[Label, str], str] = {},
                 unit: str = "1",
                 description: Optional[str] = None):
         self._get_metric(category, name, type(value), metrics_sdk.UpDownCounter, unit, description) \
-            .add(value, self._merge_labels(labels))
+            .add(value, self._merge_labels(_convert_labels(labels)))
 
 
     def record_value(self, category: str, name: str, value: Union[int, float],
-                     labels: Dict[str, str] = {},
+                     labels: Dict[Union[Label, str], str] = {},
                      unit: str = "1",
                      description: Optional[str] = None):
-        self._get_metric(category, name, type(value), metrics_sdk.ValueRecorder, unit,description)\
-            .record(value, self._merge_labels(labels))
+        self._get_metric(category, name, type(value), metrics_sdk.ValueRecorder, unit, description)\
+            .record(value, self._merge_labels(_convert_labels(labels)))
 
     def gauge(self,
               category: str,

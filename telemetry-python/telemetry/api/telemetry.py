@@ -12,7 +12,7 @@ from opentelemetry.sdk.metrics import MetricsExporter
 from opentelemetry.sdk.trace import TracerProvider, SynchronousMultiSpanProcessor, SpanProcessor
 from opentelemetry.sdk.trace.export import SimpleExportSpanProcessor, SpanExporter
 
-from telemetry.api import Attribute
+from telemetry.api import Attribute, Label
 from telemetry.api.listeners.span_metrics import SpanMetricsProcessor
 from telemetry.api.metrics import Metrics, Observer
 from telemetry.api.trace import Tracer, SpanKind, Span, AttributeValue
@@ -38,7 +38,6 @@ class Telemetry(abc.ABC):
         self.tracer = Tracer(self.tracer_provider)
         self.metrics = Metrics(self, stateful=stateful)
         self.span_processor.add_span_processor(SpanMetricsProcessor(self.metrics))
-
 
     def register(self):
         trace_api._TRACER_PROVIDER = None
@@ -97,17 +96,17 @@ class Telemetry(abc.ABC):
     def current_span(self) -> Optional[Span]:
         return self.tracer.current_span
 
-    def counter(self, category: str, name: str, value: typing.Union[int, float] = 1, labels: Dict[str, str] = {},
+    def counter(self, category: str, name: str, value: typing.Union[int, float] = 1, labels: Dict[typing.Union[Label, str], str] = {},
                 unit: str = "1",
                 description: Optional[str] = None):
         self.metrics.counter(category, name, value=value, labels=labels, unit=unit, description=description)
 
-    def up_down_counter(self, category: str, name: str, value: typing.Union[int, float] = 1, labels: Dict[str, str] = {},
-                unit: str = "1",
-                description: Optional[str] = None):
+    def up_down_counter(self, category: str, name: str, value: typing.Union[int, float] = 1, labels: Dict[typing.Union[Label, str], str] = {},
+                        unit: str = "1",
+                        description: Optional[str] = None):
         self.metrics.up_down_counter(category, name, value=value, labels=labels, unit=unit, description=description)
 
-    def record_value(self, category: str, name: str, value: typing.Union[int, float] = 1, labels: Dict[str, str] = {},
+    def record_value(self, category: str, name: str, value: typing.Union[int, float] = 1, labels: Dict[typing.Union[Label, str], str] = {},
                      unit: str = "1",
                      description: Optional[str] = None):
         self.metrics.record_value(category, name, value=value, labels=labels, unit=unit, description=description)
@@ -126,7 +125,7 @@ class TelemetryApi:
     def span(self, name: str, attributes: Optional[typing.Mapping[Attribute, AttributeValue]] = None, labels: Optional[Dict[str, str]] = None,
              kind: SpanKind = SpanKind.INTERNAL) -> typing.ContextManager[Span]:
         from telemetry import tracer
-        
+
         @contextmanager
         def wrapper():
             with tracer.span(self.category, name, attributes=attributes, kind=kind) as span:
@@ -134,16 +133,16 @@ class TelemetryApi:
 
         return wrapper()
 
-    def counter(self, name: str, value: int = 1, labels: Dict[str, str] = {}, unit: str = "1", description: Optional[str] = None):
+    def counter(self, name: str, value: int = 1, labels: Dict[typing.Union[Label, str], str] = {}, unit: str = "1", description: Optional[str] = None):
         from telemetry import metrics
         metrics.counter(self.category, name, value=value, labels=labels, unit=unit, description=description)
 
-    def up_down_counter(self, name: str, value: int = 1, labels: Dict[str, str] = {}, unit: str = "1",
-                description: Optional[str] = None):
+    def up_down_counter(self, name: str, value: int = 1, labels: Dict[typing.Union[Label, str], str] = {}, unit: str = "1",
+                        description: Optional[str] = None):
         from telemetry import metrics
         metrics.up_down_counter(self.category, name, value=value, labels=labels, unit=unit, description=description)
 
-    def record_value(self, name: str, value: int = 1, labels: Dict[str, str] = {}, unit: str = "1", description: Optional[str] = None):
+    def record_value(self, name: str, value: int = 1, labels: Dict[typing.Union[Label, str], str] = {}, unit: str = "1", description: Optional[str] = None):
         from telemetry import metrics
         metrics.record_value(self.category, name, value=value, labels=labels, unit=unit, description=description)
 
@@ -190,7 +189,7 @@ class timed:
 
     def __set_name__(self, owner, name):
         self.owner = owner
-    
+
     def __get__(self, instance, owner):
         self.instance = instance
         self.owner = owner
@@ -305,7 +304,6 @@ class timed:
                 return fn(*call_args, **call_kwargs)
 
         return wrapper
-
 
     def __call__(self, *args, **kwargs):
         if len(args) == 1 and isinstance(args[0], typing.Callable):

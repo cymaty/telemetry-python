@@ -66,10 +66,6 @@ class SpanMetricsProcessor(SpanProcessor):
 
         metric.record(elapsed_ms, labels=labels)
 
-        if span.status.status_code == StatusCode.ERROR:
-            error_counter = self.metrics._get_metric("trace", f"errors", int, Counter)
-            error_counter.add(1, labels=labels)
-
     def shutdown(self) -> None:
         super().shutdown()
 
