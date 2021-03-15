@@ -63,13 +63,19 @@ API
 ---
 """
 
-import collections
 import logging
-import re
 import os
+import re
 import threading
-from typing import Iterable, Optional, Sequence, Union
+from typing import Optional, Sequence
 
+from opentelemetry.sdk.metrics import Counter, ValueRecorder, Observer
+from opentelemetry.sdk.metrics.export import (
+    ExportRecord,
+    MetricsExporter,
+    MetricsExportResult,
+)
+from opentelemetry.sdk.metrics.export.aggregate import MinMaxSumCountAggregator
 from opentelemetry.sdk.util.instrumentation import InstrumentationInfo
 from prometheus_client.core import (
     REGISTRY,
@@ -78,14 +84,6 @@ from prometheus_client.core import (
     UnknownMetricFamily,
     GaugeMetricFamily
 )
-
-from opentelemetry.metrics import Counter, ValueRecorder, Observer
-from opentelemetry.sdk.metrics.export import (
-    ExportRecord,
-    MetricsExporter,
-    MetricsExportResult,
-)
-from opentelemetry.sdk.metrics.export.aggregate import MinMaxSumCountAggregator
 
 logger = logging.getLogger(__name__)
 
@@ -99,8 +97,8 @@ class PrometheusMetricsExporter(MetricsExporter):
     """
 
     def __init__(self, bind_address: str = os.environ.get('METRICS_PROMETHEUS_BIND_ADDRESS', '0.0.0.0:9102'),
-                       prefix: str = os.environ.get('METRICS_PROMETHEUS_PREFIX', ''),
-                       start_server: bool = True):
+                 prefix: str = os.environ.get('METRICS_PROMETHEUS_PREFIX', ''),
+                 start_server: bool = True):
 
         from prometheus_client import start_http_server
 
@@ -122,7 +120,7 @@ class PrometheusMetricsExporter(MetricsExporter):
     def _get_collector(self, instrumentor: InstrumentationInfo) -> 'CustomCollector':
         col = self.collectors.get(instrumentor)
         if not col:
-            logger.debug(f"Registering collector for: {instrumentor}")
+            #logger.debug(f"Registering collector for: {instrumentor}")
             col = CustomCollector(instrumentor, self.prefix)
             REGISTRY.register(col)
             self.collectors[instrumentor] = col
@@ -133,7 +131,7 @@ class PrometheusMetricsExporter(MetricsExporter):
         collector: Optional[CustomCollector] = None
         for rec in export_records:
             if collector is None or collector.instrumentation_info != rec.instrument.meter.instrumentation_info:
-                logging.debug(f"Fetching collector for {rec.instrument.meter.instrumentation_info}")
+                #logging.debug(f"Fetching collector for {rec.instrument.meter.instrumentation_info}")
                 collector = self._get_collector(rec.instrument.meter.instrumentation_info)
             collector.add_metrics_data(export_records)
 
@@ -196,7 +194,7 @@ class CustomCollector:
             prometheus_metric.add_metric(
                 labels=label_values, value=export_record.aggregator.checkpoint
             )
-        if isinstance(export_record.instrument, Observer):
+        elif isinstance(export_record.instrument, Observer):
             prometheus_metric = GaugeMetricFamily(
                 name=metric_name, documentation=description, labels=label_keys
             )
