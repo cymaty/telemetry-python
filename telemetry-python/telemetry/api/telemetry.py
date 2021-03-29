@@ -122,7 +122,7 @@ class TelemetryApi:
     def __init__(self, category: str):
         self.category = category
 
-    def span(self, name: str, attributes: Optional[typing.Mapping[Attribute, AttributeValue]] = None, labels: Optional[Dict[str, str]] = None,
+    def span(self, name: str, attributes: Optional[typing.Mapping[Attribute, AttributeValue]] = None,
              kind: SpanKind = SpanKind.INTERNAL) -> typing.ContextManager[Span]:
         from telemetry import tracer
 

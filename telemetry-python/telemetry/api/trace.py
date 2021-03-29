@@ -194,6 +194,11 @@ class Tracer:
         self._lock = RLock()
         self._tracer_provider = tracer_provider
 
+    def set(self, attribute_or_label: Attribute, value: AttributeValue) -> 'Tracer':
+        if self.has_active_span():
+            self.current_span.set(attribute_or_label, value)
+        return self
+
     def set_attribute(self, name: str, value: AttributeValue) -> 'Tracer':
         if self.has_active_span():
             self.current_span.set_attribute(name, value)
