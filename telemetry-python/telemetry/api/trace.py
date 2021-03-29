@@ -195,45 +195,46 @@ class Tracer:
         self._tracer_provider = tracer_provider
 
     def set(self, attribute_or_label: Attribute, value: AttributeValue) -> 'Tracer':
-        if self.has_active_span():
+        if self.has_active_span:
             self.current_span.set(attribute_or_label, value)
         return self
 
     def set_attribute(self, name: str, value: AttributeValue) -> 'Tracer':
-        if self.has_active_span():
+        if self.has_active_span:
             self.current_span.set_attribute(name, value)
         return self
 
     def set_label(self, name: str, value: str) -> 'Tracer':
-        if self.has_active_span():
+        if self.has_active_span:
             self.current_span.set_label(name, value)
         return self
 
     def add_event(self, name: str, attributes: Mapping[str, AttributeValue]) -> 'Tracer':
-        if self.has_active_span():
+        if self.has_active_span:
             self.current_span.add_event(name, attributes)
         return self
 
+    @property
     def has_active_span(self):
         return trace_api.get_current_span() != trace_api.INVALID_SPAN
 
     @property
     def attributes(self) -> Mapping[str, AttributeValue]:
-        if not self.has_active_span():
+        if not self.has_active_span:
             return {}
         return self.current_span.attributes or {}
 
     @property
     def labels(self) -> Dict[str, str]:
         output = {}
-        if not self.has_active_span():
+        if not self.has_active_span:
             return output
 
         return self.current_span.labels
 
     @property
     def current_span(self) -> Optional[Span]:
-        if not self.has_active_span():
+        if not self.has_active_span:
             return None
 
         return Span(trace_api.get_current_span())
