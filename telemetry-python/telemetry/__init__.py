@@ -16,7 +16,7 @@ metrics: Metrics = wrapt.ObjectProxy(telemetry.metrics)
 _telemetry_lock = RLock()
 
 
-def get_telemetry():
+def get_telemetry() -> Telemetry:
     return telemetry.__wrapped__
 
 
