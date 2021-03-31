@@ -21,17 +21,12 @@ def extract_args(*args: str, **kwargs) -> Optional[AttributeExtractor]:
 
     Extract using name of the argument as the attribute/label name:
     ```
-    @trace(attribute_extractor=extract_args('foo'), label_extractor=extract_args('bar'))
-    def some_method(foo: str = 'default', bar: str = 'default'):
-        // attribute 'foo' will be added with value of `foo` argument
-        // label 'bar' will be added with value of `bar` argument
-    ```
-
-    Extract
-    ```
-    @trace(attribute_extractor=extract_args(foo=Attributes.FOO))
-    def some_method(foo: str = 'default'):
-        // attribute Attributes.FOO will be added with value of `foo` argument
+    @trace(extractor=extract_args('foo', bar=Label, baz=Attributes.BAZ, biz=Attribute))
+    def some_method(foo: str, bar: str, baz: str):
+        // ad-hoc attribute 'foo' will be added with value of `foo` argument
+        // ad-hoc label 'bar' will be added with value of `bar` argument
+        // predefined label Attributes.BAZ will be added with value of `baz` argument
+        // predefined attribute Attributes.BIZ will be added with value of `biz` argument
     ```
     :param args: argument names to extract
     :param kwargs: argument names to Attribute or Label to use for that argument
