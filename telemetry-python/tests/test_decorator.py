@@ -5,7 +5,7 @@ from typing import Optional
 
 import pytest
 
-from telemetry import TelemetryMixin, trace, extract_args, Attributes
+from telemetry import TelemetryMixin, trace, extract_args, Attributes, Label, Attribute
 from telemetry.testing import TelemetryFixture
 from tests.attributes import TestAttributes
 from tests.example import global_method
@@ -26,8 +26,7 @@ class DecoratorExample(TelemetryMixin):
 
     @trace(category='custom_category',
            attributes={TestAttributes.ATTRIB1: 'a1', TestAttributes.LABEL1: 't1'},
-           label_extractor=extract_args("arg1"),
-           attribute_extractor=extract_args("arg2"))
+           extractor=extract_args("arg2", arg1=Label))
     def method_trace_custom(self, arg1: str, arg2: int = 10, arg3: Optional[ComplexValue] = None):
         self.telemetry.counter('counter3', 1)
         time.sleep(0.1)  # artificial delay so that we can assert a non-zero elapsed time
@@ -35,16 +34,15 @@ class DecoratorExample(TelemetryMixin):
 
     @trace(category='custom_category',
            attributes={TestAttributes.ATTRIB1: 'a1', TestAttributes.LABEL1: 't1'},
-           label_extractor=extract_args("arg4"),  # arg4 is not a valid argument
-           attribute_extractor=extract_args("arg2"))
+           extractor=extract_args("arg4", arg2=Label)) # arg4 is invalid
     def method_invalid_argument_label(self, arg1: str, arg2: int = 10):
         logging.info(f'method_invalid_argument_label log')
 
-    @trace(label_extractor=extract_args("arg1"))  # arg1 is a complex type, ComplexValue)
+    @trace(extractor=extract_args(arg1=Label))  # arg1 is a complex type, ComplexValue)
     def method_invalid_complex_argument_label(self, arg1: ComplexValue):
         logging.info(f'method_invalid_complex_argument_label log')
 
-    @trace(label_extractor=lambda d, fn: {'name': d['arg1']['name']} if 'arg1' in d else {})
+    @trace(extractor=lambda d, fn: {Label('name'): d['arg1']['name']} if 'arg1' in d else {})
     def method_complex_argument_label(self, arg1: ComplexValue):
         logging.info(f'method_complex_argument_label log')
 
@@ -101,7 +99,7 @@ class TestDecorator:
                                                     Attributes.TRACE_NAME.name: 'custom_category.method_trace_custom',
                                                     Attributes.TRACE_STATUS.name: 'OK'}).count == 1
 
-    def test_decorator_argument_labelging(self, telemetry: TelemetryFixture, caplog):
+    def test_decorator_argument_labeling(self, telemetry: TelemetryFixture, caplog):
         telemetry.enable_log_record_capture(caplog)
 
         example = DecoratorExample()
@@ -110,10 +108,14 @@ class TestDecorator:
 
         telemetry.collect()
 
+        recorders = telemetry.get_value_recorders()
+
         assert telemetry.get_value_recorder(name='trace.duration',
-                                            labels={'arg1': 'foo', Attributes.TRACE_CATEGORY.name: 'custom_category',
+                                            labels={Attributes.TRACE_CATEGORY.name: 'custom_category',
                                                     Attributes.TRACE_NAME.name: 'custom_category.method_trace_custom',
-                                                    Attributes.TRACE_STATUS.name: 'OK', 'label1': 't1'}).count == 2
+                                                    Attributes.TRACE_STATUS.name: 'OK',
+                                                    'arg1': 'foo',
+                                                    'label1': 't1'}).count == 2
 
         rec = telemetry.caplog.get_record(
             lambda rec: rec['message'] == 'method_trace_custom log' and rec['attributes']['arg2'] == 10)
@@ -168,7 +170,7 @@ class TestDecorator:
         telemetry.collect()
 
         telemetry.caplog.assert_log_contains(
-            "@trace decorator refers to an argument, arg4, that was not found in the signature for DecoratorExample.method_invalid_argument_label",
+            "@trace decorator refers to an argument 'arg4' that was not found in the signature for DecoratorExample.method_invalid_argument_label",
             'WARNING')
 
     def test_decorator_ignore_complex_argument_label(self, telemetry: TelemetryFixture, caplog):
@@ -185,7 +187,7 @@ class TestDecorator:
                                                     Attributes.TRACE_NAME.name: 'tests.test_decorator.DecoratorExample.method_complex_argument_label'}).count == 1
 
     def test_decorator_local_def(self, telemetry: TelemetryFixture):
-        @trace(label_extractor=extract_args("arg"))
+        @trace(extractor=extract_args("arg"))
         def foo(arg: str):
             time.sleep(.1)
             return "value"
@@ -197,8 +199,23 @@ class TestDecorator:
         assert telemetry.get_value_recorder('trace.duration', labels={
             Attributes.TRACE_CATEGORY.name: 'tests.test_decorator',
             Attributes.TRACE_NAME.name: 'tests.test_decorator.foo',
-            Attributes.TRACE_STATUS.name: 'OK',
-            'arg': 'arg1'}).count == 1
+            Attributes.TRACE_STATUS.name: 'OK'}).count == 1
+
+
+    def test_decorator_extractor_mapping(self, telemetry: TelemetryFixture):
+        @trace(extractor=extract_args(arg1='arg1_renamed', arg2=Label('arg2_renamed'), arg3=Attribute, arg4=Label))
+        def foo(arg1: str, arg2: str, arg3: str, arg4: str):
+            time.sleep(.1)
+            return "value"
+
+        foo('arg1', 'arg2', 'arg3', 'arg4')
+
+        telemetry.collect()
+
+        assert telemetry.get_value_recorder('trace.duration', labels={
+            Attributes.TRACE_CATEGORY.name: 'tests.test_decorator',
+            Attributes.TRACE_NAME.name: 'tests.test_decorator.foo',
+            Attributes.TRACE_STATUS.name: 'OK', 'arg2_renamed': 'arg2', 'arg4': 'arg4'}).count == 1
 
     def test_decorator_throws_exception_on_invalid_usage(self, telemetry: TelemetryFixture):
         """

@@ -6,27 +6,65 @@ from typing import Dict, Optional
 
 import wrapt
 
-from telemetry.api import Attribute
+from telemetry.api import Attribute, Label
 from telemetry.api.trace import AttributeValue
 
 ArgumentLabeler = typing.Callable[[any], Optional[str]]
-AttributeExtractor = typing.Callable[[Dict[str, any], typing.Callable[[any], any]], Dict[str, any]]
+AttributeExtractor = typing.Callable[[Dict[str, any], typing.Callable[[any], any]], Dict[Attribute, any]]
 
-def extract_args(*args: str) -> Optional[AttributeExtractor]:
+def extract_args(*args: str, **kwargs) -> Optional[AttributeExtractor]:
     """
-    Creates an `AttributeExtractor` that extracts one or more function arguments as attributes/labels
+    Creates an `AttributeExtractor` that extracts one or more function arguments as attributes/labels.
+
+    If `args` is set, the arguments will be added as `Attribute`'s with the same name.
+    Example:
+
+    Extract using name of the argument as the attribute/label name:
+    ```
+    @trace(attribute_extractor=extract_args('foo'), label_extractor=extract_args('bar'))
+    def some_method(foo: str = 'default', bar: str = 'default'):
+        // attribute 'foo' will be added with value of `foo` argument
+        // label 'bar' will be added with value of `bar` argument
+    ```
+
+    Extract
+    ```
+    @trace(attribute_extractor=extract_args(foo=Attributes.FOO))
+    def some_method(foo: str = 'default'):
+        // attribute Attributes.FOO will be added with value of `foo` argument
+    ```
     :param args: argument names to extract
+    :param kwargs: argument names to Attribute or Label to use for that argument
     :return: `AttributeExtractor` that will extract the given argument names as attributes/labels
     """
-    def extract(values: Dict[str, any], fn) -> Dict[str, any]:
+    def extract(values: Dict[str, any], fn) -> Dict[Attribute, any]:
         out = {}
+
         for name in args:
             if name not in values:
                 logging.warning(
-                    f"@trace decorator refers to an argument, {name}, that was not found in the "
-                    f"signature for {fn.__qualname__}! (this label will not be added)")
+                    f"@trace decorator refers to an argument '{name}' that was not found in the "
+                    f"signature for {fn.__qualname__}! (this attribute will not be added)")
             else:
-                out[name] = values[name]
+                out[Attribute(name, register=False)] = values[name]
+
+        for name, value in kwargs.items():
+            if name not in values:
+                logging.warning(
+                    f"@trace decorator refers to an argument '{name}' that was not found in the "
+                    f"signature for {fn.__qualname__}! (this attribute will not be added)")
+            else:
+                if isinstance(value, Attribute):
+                    out[value] = values[name]
+                elif isinstance(value, str):
+                    out[Attribute(value, register=False)] = values[name]
+                elif value == Label:
+                    out[Label(name, register=False)] = values[name]
+                elif value == Attribute:
+                    out[Attribute(name, register=False)] = values[name]
+                else:
+                    logging.warning(
+                        f"@trace decorator has invalid mapping for argument '{name}'.  Expected one of Label, Attribute or str but got {type(value)}")
         return out
     return extract
 
@@ -81,14 +119,14 @@ class TracedInvocation:
         return arg_values
 
 
-    def wrap_span_attributes(self, fn, decorator_name: str, setter: typing.Callable[[str, any], None], extractor: Optional[AttributeExtractor]):
+    def wrap_span_attributes(self, fn, decorator_name: str, setter: typing.Callable[[Attribute, any], None], extractor: Optional[AttributeExtractor]):
         def wrapped(*args, **kwargs):
             if extractor:
                 try:
                     extracted = extractor(self.resolve_arguments(*args, **kwargs), self.target)
                     if extracted:
-                        for name, value in extracted.items():
-                            setter(name, value)
+                        for attrib, value in extracted.items():
+                            setter(attrib, value)
                 except BaseException as ex:
                     logging.warning(
                         f"{decorator_name} decorator for {self.target.__qualname__} threw an exception during label extraction! {ex}")
@@ -116,15 +154,13 @@ class trace(object):
                  *,
                  category: Optional[str] = None,
                  attributes: Optional[typing.Mapping[Attribute, AttributeValue]] = None,
-                 attribute_extractor: Optional[AttributeExtractor] = None,
-                 label_extractor: Optional[AttributeExtractor] = None
+                 extractor: Optional[AttributeExtractor] = None
                  ):
 
         self.signature = None
         self.category = category
         self.attributes = attributes or {}
-        self.attribute_extractor = attribute_extractor
-        self.label_extractor = label_extractor
+        self.extractor = extractor
 
     def _get_category(self, fn, instance):
         import inspect
@@ -152,8 +188,7 @@ class trace(object):
                 for a, value in self.attributes.items():
                     span.set(a, value)
                 invocation = TracedInvocation(self, fn)
-                wrapped_attributes = invocation.wrap_span_attributes(fn, "@trace", span.set_attribute, self.attribute_extractor)
-                wrapped_labels = invocation.wrap_span_attributes(wrapped_attributes, "@trace", span.set_label, self.label_extractor)
-                return wrapped_labels(*args, **kwargs)
+                wrapped_extracted = invocation.wrap_span_attributes(fn, "@trace", span.set, self.extractor)
+                return wrapped_extracted(*args, **kwargs)
 
 
