@@ -1,4 +1,3 @@
-import functools
 import inspect
 import logging
 import typing
@@ -14,6 +13,11 @@ ArgumentLabeler = typing.Callable[[any], Optional[str]]
 AttributeExtractor = typing.Callable[[Dict[str, any], typing.Callable[[any], any]], Dict[str, any]]
 
 def extract_args(*args: str) -> Optional[AttributeExtractor]:
+    """
+    Creates an `AttributeExtractor` that extracts one or more function arguments as attributes/labels
+    :param args: argument names to extract
+    :return: `AttributeExtractor` that will extract the given argument names as attributes/labels
+    """
     def extract(values: Dict[str, any], fn) -> Dict[str, any]:
         out = {}
         for name in args:
@@ -95,6 +99,17 @@ class TracedInvocation:
 
 @wrapt.decorator
 class trace(object):
+    """
+    Trace decorator that enables tracing of calls for the decorated method/function.
+
+    category: override the trace category otherwise defaults to the qualified name of the decorated function/method
+    attributes: static set of attributes (of type `telemetry.Attribute`) to set on the span
+    attribute_extractor: a callable in the form:  (arguments, decorated_function) -> (attributes)
+    label_extractor: a callable in the form:  (arguments, decorated_function) -> (labels)
+
+    For `attribute_extractor` and `label_extractor` there is a helper function, `extract_args` that takes a list of argument names and
+    will return an `AttributeExtractor` that will extract the argument values as attributes/labels.
+    """
     extract_args = extract_args
 
     def __init__(self,
@@ -133,6 +148,7 @@ class trace(object):
                 self.signature = inspect.signature(fn)
 
             with telemetry.tracer.span(self._get_category(fn, instance), fn.__name__) as span:
+                # set static attributes
                 for a, value in self.attributes.items():
                     span.set(a, value)
                 invocation = TracedInvocation(self, fn)
