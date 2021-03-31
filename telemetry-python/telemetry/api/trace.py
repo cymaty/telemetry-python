@@ -131,8 +131,17 @@ class Span:
         # to boost performance, we track valid attribute names in this cache (shared across all instances).
         # The first time an attribute key is seen, we'll validate it and then add it to the cache so that we can skip
         # validation the next time we encounter it.
+
+        if name is None:
+            logging.warning(f"Called set_attribute with name == None!")
+            return self
+
+        if isinstance(name, Attribute):
+            logging.warning(f"Called set_attribute with an instance of {name.__class__.__name__} for the name! You should call `set` instead")
+            name = name.name
+
         if not isinstance(name, str):
-            raise Exception("Attribute name must be a string!")
+            raise Exception(f"Expected a string for attribute name but got {name}!")
 
         if name not in self._attribute_key_cache:
             if not isinstance(name, str):
@@ -151,8 +160,16 @@ class Span:
         return self
 
     def set_label(self, name: str, value: str) -> 'Span':
+        if name is None:
+            logging.warning(f"Called set_label with name == None!")
+            return self
+
+        if isinstance(name, Attribute):
+            logging.warning(f"Called set_label with an instance of {name.__class__.__name__} for the name! You should call `set` instead")
+            name = name.name
+
         if not isinstance(name, str):
-            raise Exception("label name must be a string!")
+            raise Exception(f"Expected a string for label name but got {name}!")
 
         if not isinstance(value, str):
             logging.warning(f"label value for must be a string! (name={name}, value={value})")
