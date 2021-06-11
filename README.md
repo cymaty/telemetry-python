@@ -69,6 +69,25 @@ def span(self, category: str, name: str,
          
 ```
 
+##### Working with Spans
+
+Span instances have methods that can be called after creation to attach metadata to the span:
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `context()` | Returns the span's contextual information (eg: parent span id, etc) | `SpanContext` |
+| `status()` | Returns the span's status | `SpanStatus` |
+| `name()` | Returns the span's short name | `str` |
+| `qname()` | Returns the span's qualified name (`{category}.{name}`) | `str` |
+| `category()` | Returns the span's category | `str` |
+| `set(attribute_or_label: Attribute, value: AttributeValue)` | Sets a pre-defined attribute or label value on a span | `None` |
+| `set_attribute(name: str, value: AttributeValue)` | Sets an arbitrary attribute on a span | `None` |
+| `add_event(name: str, attributes: Mapping[str, AttributeValue])` | Sets an arbitrary label on a span | `None` |
+| `end()` | Ends the span to record the end time and status for this span | `None` |
+| `attributes()` | Returns attributes/labels set on this span | `Mapping[str, AttributeValue]` |
+| `labels()` | Returns only the labels set on this span | `Dict[str, str]` |
+| `events()` | Returns events added to this span | `List` |
+
 
 ### Counter
 
