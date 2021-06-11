@@ -232,7 +232,7 @@ class TestTracer:
         RequestsInstrumentor().instrument()
 
         telemetry.initialize()
-        telemetry.add_span_listener(InstrumentorSpanListener(
+        telemetry.add_span_processor(InstrumentorSpanListener(
             LabelAttributes('component', 'http.status_code', 'http.method'), 'requests'))
 
         responses.add_passthru('http://localhost:1234/does_not_exist')
@@ -262,7 +262,7 @@ class TestTracer:
                 wrapped.set_attribute('hostname', 'localhost')
                 wrapped.set_label('env', 'test')
 
-        telemetry.add_span_listener(Customlabelger())
+        telemetry.add_span_processor(Customlabelger())
 
         with telemetry.span("category1", "span1") as span:
             assert span.labels['env'] == 'test'

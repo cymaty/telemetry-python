@@ -1,12 +1,15 @@
 # Telemetry API
 
-## Environment Variables
-
-TODO
+Supports exposing application metrics and tracing data.
 
 ## Usage
 
-Via Module Import:
+The Telemetry API can be accessed in different ways. 
+
+### Via Global Module
+
+**NOTE: With this usage, metric methods have a `category` argument to "scope" the metric under.**
+
 ```python
 from telemetry import telemetry, Attributes
 
@@ -16,10 +19,14 @@ class UserManager:
             # ... fetch and return user ...
 ```
 
-Via `TelemetryMixin` class:
+### Via `TelemetryMixin` class:
 
 The `TelemetryMixin` class can be mixed into any class to expose a `telemetry` variable on the class.
-All of the standard telemetry methods are available on this member, EXCEPT that the methods don't accept a `category` argument-- instead the category will be automatically populated with the class's fully-qualified name.   
+All of the standard telemetry methods are available on this member, EXCEPT that the methods don't accept a `category` argument-- instead the category will be automatically populated with the class's fully-qualified name.
+
+**NOTE: With this usage, metric methods do NOT have a `category` argument, it is inferred from the class name (or value of `telemetry_category` if overriden).**
+
+
 ```python
 from telemetry import Attributes, TelemetryMixin
 
@@ -29,6 +36,99 @@ class UserManager(TelemetryMixin):
         self.telemetry.span("fetch_user", attributes={Attributes.USER_ID, user_id})
             # ... fetch and return user ...
 ```
+
+## Telemetry Methods
+
+**NOTE: for methods below that have a `category` argument, the same method when using the `TelemetryMixin` class will NOT have a `category` argument.**
+
+### Span
+
+Creates a new span.  Typically used as a context manager like this:
+```
+with span(...) as span:
+    # do something
+```
+
+Span data can be exported in two forms:
+    - metrics (eg: call count and sum of duration of all calls) 
+    - traces
+    
+The current span (if one is active), can be accessed by calling `current_span()`
+
+
+```
+def span(self, category: str, name: str,
+         attributes: Optional[typing.Mapping[typing.Union[Attribute, str], AttributeValue]] = None,
+         kind: SpanKind = SpanKind.INTERNAL) -> typing.ContextManager[Span]
+
+:param category: the category to associate with the span
+:param name: the short name of the span (we be appended to the category when exporting the full span name)
+:param attributes: a dict of attribute/label instances to their values.
+:param kind: the span kind (eg: CLIENT, SERVER, etc).  Defaults to INTERNAL 
+:return: new span instance (wrapped in a ContextManager)
+         
+```
+
+
+### Counter
+
+Increments a counter value
+ 
+
+```
+def counter(self, category: str, name: str, value: typing.Union[int, float] = 1, labels: Dict[typing.Union[Label, str], str] = {},
+            unit: str = "1",
+            description: Optional[str] = None)
+            
+:param category: the metric's category
+:param name: the metric's short name within the category
+:param value: the value to add to the counter
+:param labels: labels to attach to this counter value
+:param unit: units to associate with this counter
+:param description: human-readable description for this metric
+:return: None            
+```
+
+
+### Up-Down Counter
+
+Increments/decrements a counter value
+
+```
+def up_down_counter(self, category: str, name: str, value: typing.Union[int, float] = 1, labels: Dict[typing.Union[Label, str], str] = {},
+                    unit: str = "1",
+                    description: Optional[str] = None)
+
+:param category: the metric's category
+:param name: the metric's short name within the category
+:param value: value to add to the counter.  May be negative.
+:param labels: labels to attach to this counter value
+:param unit: units to associate with this counter
+:param description: human-readable description for this metric
+:return: None
+```
+
+
+### Record Value
+
+Records a numeric value.  When exported, two metrics will be written:        
+- `<metric fqdn>_count`: how many values were recorded in the metric interval
+- `<metric fqdn>_sum`: the sum of all the values recorded in the metric interval
+
+```
+def record_value(self, category: str, name: str, value: typing.Union[int, float] = 1, labels: Dict[typing.Union[Label, str], str] = {},
+                 unit: str = "1",
+                 description: Optional[str] = None)
+                 
+:param category: the metric's category
+:param name: the metric's short name within the category
+:param value: the value to record.
+:param labels: labels to attach to this counter value
+:param unit: units to associate with this counter
+:param description: human-readable description for this metric
+:return: None
+```                 
+
 
 ## Attributes and Labels
 
@@ -62,17 +162,27 @@ TODO: recommendations and/or rule of thumb for enabling propagation?
   
 ## JSON Logging
 
-Setting the environment variable `JSON_LOGGING=1` environment variable will install a Python `logging` handler that will emit logs as JSON records and attach current attributes and labels to the log message under the `attributes` key. 
-## Tracing
+To enable telemetry-aware JSON logging, call `initialize_json_logger()`.
 
-#### Usage
+- Typically, applications should check if the environment variable `LOG_FORMAT=json`, and if so, should call this method during application startup.
+- The log message format is Logstash compatible.
+- Any attributes/labels that are set on the current span when the log message emitted will be added to the `attributes` key of the message.
 
-```python
 
-```
+## Exporting Metrics
 
-## Metrics
+To enable exporting of metrics, you should set the `METRICS_EXPORTERS` environment variable to a comma-delimited set of exporters to enable.  See below for a list of exporters that are available.
 
-#### Exporting Metrics
+### Exporters
+
+| Key     | Description   | Configuration |
+|---------|---------------|---------------|
+| `prometheus` | Starts an HTTP server to expose a metrics dump page (by default: `http://localhost:9102`) | `METRICS_PROMETHEUS_BIND_ADDRESS` - sets the `hostname:port` to start the HTTP server on. Defaults to `localhost:9102`. `METRICS_PROMETHEUS_PREFIX` - prefix to add to all metrics exported to Prometheus.  Default is `None`. |
+| `console` | Logs all metrics to the console (can be noisy). | TODO: allow for filtering of metric types/names via an environment variable. |
+
+### Development
+
+Run your application with the `METRICS_EXPORTERS=prometheus` environment variable, and then view all metric values by accessing [http://localhost:9102/](http://localhost:9102/)
+
 
 
