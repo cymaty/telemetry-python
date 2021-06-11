@@ -151,12 +151,22 @@ Here is a summary of whether attributes and/or labels will be attached to the co
 | Traces  | YES       | YES (except trace metrics)  | Each trace exported to an external trace viewer like Jaeger will include both, but the trace metrics that track the trace count and timing will NOT include attributes |
 | Logs    | YES       | YES         | Logs will include all labels and attributes when JSON logging is used |
 
-### Attribute and Label Inheritance
+### Standard Attributes/Labels
 
-When defining `Attribute`'s and `Label`'s, there is a `propagate` flag that dictates whether that attribute/label will be automatically pass down to any child spans from a parent span.
+The `telemetry.api.Attributes` class is used to define attributes/labels that are not application specific.
 
-This is useful when you want to be able to track a higher "context" in which that trace/metric/log was generated.
-For example, for the standard tag `GRPC_METHOD`, the `propagate` flag is set to `True`, which means that any telemetry data that is generated within the execution of that GRPC call will have the GRPC method that is currently executing attached to all telemetry data generated within that call.
+### Application-Specific Attributes/Labels
+
+A class should be defined in the application codebase (typically `<application top-level package>.telemetry.Attributes`) that should extend `telemetry.Attributes` so that it inherits the pre-defined attributes/labels defined in the Telemetry API project by default.
+
+### Propagation
+
+When defining `Attribute`'s and `Label`'s, there is a `propagate` flag that dictates whether that attribute/label will be automatically passed down to any child spans from a parent span. If `propagate` is `False`, then only
+spans that explicitly set that attribute/label will have it set. 
+
+This is useful when you want to be able to track a parent "context" in which all child traces/metrics/logs were generated.
+
+For example, for the standard label `GRPC_METHOD`, the `propagate` flag is set to `True`, which means that any telemetry data that is generated within the execution of that specific GRPC method call will automatically have that label set.
 
 TODO: recommendations and/or rule of thumb for enabling propagation?
   
